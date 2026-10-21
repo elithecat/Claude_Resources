@@ -1,6 +1,6 @@
 # CLAUDE.md template for research and analysis projects
 
-This file is a starting set of rules for Claude Code in a research or analysis repository: integrity, how to take instructions, deliverables, figures and tables, analysis and verification, and agent reports.
+This file is a starting set of rules for Claude Code in a research or analysis repository: integrity, how to take instructions, deliverables, writing, figures and tables, analysis and verification, and agent reports.
 Use it in one of two ways: copy it into a repository as `CLAUDE.md` for project rules, or install it as `~/.claude/CLAUDE.md` for rules in every project.
 Then edit it. Replace every item in [brackets], delete the rules that do not fit your work, and add your own.
 An instruction that the user gives in chat takes precedence over this file. A project's own `CLAUDE.md` takes precedence over the user-level file on project matters, such as folder names and build commands.
@@ -124,6 +124,8 @@ Put slow computations in scripts that save their results to `0_Data/`, and the f
 
 These rules apply to all prose: documents, captions, code comments, commit messages, and chat replies.
 
+## 3.1 General
+
 - Write in plain, concise language. Use short sentences, and delete words that add no information.
 - Define every technical or project-specific term at first use, and use one term for each concept throughout.
 - Never invent facts, numbers, quotations, or citations. Mark a fact that you could not confirm with `[brackets]` for the user to resolve.
@@ -131,7 +133,113 @@ These rules apply to all prose: documents, captions, code comments, commit messa
 - Give every number its unit and its denominator, and give every table and figure a caption that stands on its own (Part 4).
 - Use the active voice, and name who did each action.
 
+## 3.2 Mannered prose
+
+Remove all mannered prose. Anthropic defines mannered prose in "Prompting Claude Fable 5.1," section "Writing density" (<https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-fable-5-1#writing-density>):
+
+> Mannered prose substitutes metaphor and flourish for direct statement. Instead of "a parameter worth varying," the mannered writer produces "a dial worth turning." Instead of "this point still matters," they write "this point earns its keep." The phrases exist to display the writer, not to convey the idea, and readers can tell. That is why mannered prose irritates: it makes the reader work harder so the writer can perform. It is also imprecise. Metaphors drag in connotations the writer did not choose and cannot control. The fix is to say what you mean. When a literal phrase is available, use it.
+
+The short form of the rule, for a review prompt, is **"Please remove all mannered prose."**
+
+- **Check density as well as manner.** Every phrase must add information. Sentences with too many clauses, and paragraphs without breaks, are the related problem.
+- **Use the literal term.** For every noun and verb, ask whether you use the word in its literal sense for this subject. A parameter is not a dial, a finding cannot earn, and an assumption cannot carry a load. If a word comes from a domain that the subject does not belong to (machinery, architecture, bodies, money, combat, travel, theater), replace the word with the literal term.
+- If you cannot think of a literal term, the sentence probably has no clear content. Delete the sentence, or decide what it means. Use a figurative word only when the word is the established technical term and no literal term exists (for example "bootstrap" or "the tail of a distribution").
+
+Common substitutions:
+
+| Mannered | Write instead |
+|---|---|
+| a dial worth turning, a knob, a lever | a parameter worth varying; a choice |
+| earns its keep, pulls its weight, does the heavy lifting | matters; accounts for most of the effect |
+| load-bearing, structural (of a claim) | necessary; the result depends on it; central |
+| the spine, skeleton, or backbone of the argument | the main claim; the organizing idea |
+| anchors, grounds, underpins, scaffolds | supports; is the basis for; justifies |
+| unlocks, unpacks, surfaces, sharpens | allows; explains; shows; clarifies |
+| navigates, threads the needle, walks a line | handles; balances; chooses between |
+| lands, hits home, rings true | is persuasive; is correct; matches the evidence |
+| a lens, a frame, through the lens of | a perspective; considered as; in terms of |
+| the landscape, the terrain, the space | the field; the set of options; the literature |
+| tapestry, mosaic, symphony, dance, journey | the name of the actual system, set, or sequence |
+| at the heart of, at its core, at bottom | the main point is; centrally |
+| a double-edged sword, a two-way street | has a benefit and a cost (name both) |
+| moving parts, plumbing, machinery (of a method) | components; steps; the estimation procedure |
+| leans on, rests on, hinges on | uses; depends on; requires |
+| honest (of an estimate, a sentence, or a comparison) | unbiased; accurate; direct; correct |
+| the bug's footprint, where the 17% lives, craters | the effect of the bug; the source of the 17%; drops sharply |
+| the control arm buys back the penalty | a larger control arm removes the penalty |
+
+**Constructions to delete or rewrite:**
+
+- **"Not X but Y" and related forms** ("isn't just X; it's Y," "less a question of X than of Y," "not because X but because Y"). State Y directly. If you need to refute X, refute X in a separate sentence with evidence. A plain correction in the form "write X, not Y" is acceptable.
+- **Lists of three for rhythm.** Use three items only when there are three real items. Do not add items to reach three, and do not end a paragraph with a three-part list for effect. More than about 3 such lists per 1,000 words is a common sign of generated text.
+- **Closing clauses added for effect** ("and that is the whole point," "which is exactly the problem," "and it shows"). Delete them.
+- **Epigrams and quotable sentences at the end of a paragraph** ("Reliable measurement is a precondition for accountability"). Make the point with a number, or delete the sentence.
+- **Dramatic fragments** ("A checkbox." "Twice.") and contrasts arranged for effect. Write complete, plain sentences.
+- **Colon reveals** ("The answer: …"). Use at most 1 in a document, and never 2 in adjacent paragraphs.
+- **Dramatic phrases of zero or one** ("not a single participant"), mock-modest intensifiers ("almost embarrassingly small"), double negatives used for emphasis ("The timing is not incidental"), and empty intensifiers ("actually," "truly," "exactly this").
+- **Template phrases**: hedges that cover both sides ("Whatever position one takes…"), concessions before a claim ("This is not a panacea, but…"), closing lists that end with "alike," and comments that describe the argument ("This experience illustrates the underlying problem").
+- **Rhetorical questions used as transitions.** State the answer. A list of research questions that states the aims of a paper is acceptable, and so is a question heading that a venue requires.
+- **Comments about the text**, beyond a one-sentence outline: "it is worth noting that," "I want to emphasize," "as discussed above," "in what follows," "to put it another way." State each point once, where it belongs. A "Recall that" sentence that restates a definition before you reuse it is acceptable, and so is a roadmap paragraph in a long paper.
+- **Repeated qualifiers.** Qualify a claim once, with the specific limit ("in the 12 states with complete data"), and use "may" as the usual modal. Do not stack qualifiers ("arguably," "somewhat," "to some extent," "in many ways," "perhaps"). A true claim without qualifiers is better than a vague claim with many qualifiers. In shorter formats, hedge less: use 1 word per estimate on a web page, and no hedge on a one-pager.
+- **Nouns made from verbs, with a weak verb.** Write "evaluate," not "conduct an evaluation of"; "estimate," not "provide an estimation of"; "indicates," not "is indicative of."
+- **Evaluative adjectives**: crucial, critical, powerful, elegant, rich, nuanced, compelling, striking, remarkable, profound. State the fact that would make a reader choose the adjective. ("Critical value" as a statistical term is acceptable.)
+- **Uniform sentences and paragraph openings.** A series of short thesis sentences at the start of paragraphs ("The fix is small." "The payoff is immediate.") and sentences of the same length are strong signs of generated text. Vary the length of sentences, and vary how paragraphs begin.
+
+**Orwell's six rules** ("Politics and the English Language," 1946):
+
+1. Never use a metaphor, simile, or other figure of speech which you are used to seeing in print.
+2. Never use a long word where a short one will do.
+3. If it is possible to cut a word out, always cut it out.
+4. Never use the passive where you can use the active.
+5. Never use a foreign phrase, a scientific word, or a jargon word if you can think of an everyday English equivalent.
+6. Break any of these rules sooner than say anything outright barbarous.
+
+**Orwell's questions for each sentence:** What am I trying to say? What words will express it? What image or idiom will make it clearer? Is this image fresh enough to have an effect? Could I put it more shortly? Have I said anything that is avoidably ugly? In research prose, the answer to the third question is almost always "none."
+
+## 3.3 Hidden actors: subject test
+
+An example from an earlier design document: "The reserved band feeds a gate." No person appears in that sentence. A band of years cannot feed a gate, and a gate does not eat. The direct sentence is "We compute the check from the wash-out periods." The same document had windows that "choose" comparison groups, designs that "spend" data, bands that "leak," checks that must "earn their keep," and an experiment that "asks a question." Each of those verbs has an unnamed actor: the analyst.
+
+**For every clause, ask who does the action.** There are three possible answers.
+
+1. **A person** (we, the analyst, researchers, the reader). Make the person the subject. Write "We choose between the two groups with the training window," not "The training window chooses between the two groups."
+2. **Nobody, because the clause states a mathematical or logical fact.** An object can be the subject, but only with a relational verb: is, equals, has, contains, implies, depends on, is defined as, follows from, reduces to. Display verbs are also acceptable: "Figure 1 shows," "Table 2 reports," "the header lists." Statements of a mechanism are acceptable: "conditioning introduces a distortion," "autocorrelation couples the period means," "the estimator converges."
+3. **Nobody, but the verb implies an actor.** The third answer is the error. The subject is a window, script, pipeline, rule, statistic, scenario, dataset, model, figure, or body of literature, and the verb names an action that a person takes. The sentence has no actor. Rewrite the sentence.
+
+- **Make "we" the subject. Do not replace one object subject with another object subject.** Write "we select Specification 2," not "the rule prefers Specification 2" or "the comparison selects Specification 2." Write "we ran 2,000 replications per scenario," not "each scenario used 2,000 replications." Choosing, selecting, preferring, reading, and using always have a human subject.
+- **Banned verbs for non-human subjects:** feeds, decides, wants, tries, asks, tells, knows, sees, watches, judges, chooses, picks, prefers, selects, spends, earns, rescues, guards, polices, resists, survives, leaks, catches, misses, worries, hopes, cares, promises, refuses, insists, warns, suggests, reads, attaches, carries (a message).
+- **Verbs to check one at a time:** produces, delivers, drives, motivates, rewards, punishes, protects, underscores, highlights, speaks to. Some of these verbs have a legitimate mechanistic meaning. Check each use with the test above.
+- **Name people when you cite.** Write "\citet{roth_pretest_2022} warns," not "the literature warns." Write "researchers worry about X," not "the worry attaches to X." In press writing, name the institution or the design instead of the authors.
+- **Draft from the analyst's point of view**: we split the years, we choose a group, we compute a forecast, we report or we abstain. If you describe the pipeline as the actor (data enters, components act on the data, a result comes out), every sentence will have this error.
+- **Do not give procedures metaphorical names.** If we call a rule a "gate," we start to write "the band feeds the gate." If we call a check a "judge," we start to write about its verdicts. Use plain names in prose (check, rule, window, band, split). When the code already has a metaphorical name, translate the name once in the cross-reference note, and use the plain name everywhere else. A language-model agent with the role of judge is an actor, and this rule does not apply to it.
+
+## 3.4 Other signs of generated text
+
+- **State results concretely.** Do not write a sentence in which an abstract subject (the pattern, the results, our simulations, the analysis) takes a vague verb (confirms, bears out, reveals, underscores, highlights, speaks to) and a vague generality as its object (the familiar instinct, a practical lesson, the expected trade-off). Write the specific claim. For example, replace "the pattern confirms the familiar instinct to retain data" with "shortening the pre-window lowered power, which is why researchers retain as much pre-intervention data as the design allows."
+- If a sentence only says "this matches intuition," delete the sentence.
+- **Avoid formulaic parallel sentences.** Do not describe two cases in matched sentences. In such sentences, an abstract subject takes a series of verbs, the second sentence begins its contrast with "instead," and the last clause exists only for effect. State the quantity that distinguishes the cases first, and give each case in one clause: "Whether a shift appears depends on the truncated mean; for the magnitude rules it equals zero, for the signed rules it is nonzero."
+- **Do not add subtitles or labels that the source does not have.** A series of short labels under a repeated title is a common sign of generated text.
+- **Do not use em dashes** ("—" in Unicode, "---" in LaTeX, or "--" used as an em dash). Use a period, semicolon, colon, parentheses, or comma. En dashes in numeric ranges ("6.5–33.4") are acceptable.
+
+| Do not write | Write instead |
+|---|---|
+| essentially, basically, fundamentally, simply, merely, actually, really, truly, clearly, obviously, obvious, naturally, of course, in fact, indeed, arguably, effectively, virtually, notably | Delete the word. If a result is approximate, quantify it ("within 1% of the ATT"). |
+| just ("just 36%") | Delete the word, or rephrase. |
+| thing, things, something, anything, stuff | the category or the specific referent ("three criteria") |
+| "we will do two things," "the method does three things" | Name the work. For a real list, number the items and name the category ("we propose two extensions"). |
+| simple, straightforward, basic (of an idea or an argument) | Delete the label. "Simple" can describe only a model or an algorithm. |
+| delve, robust, leverage, landscape, underscore, operationalize, constituencies, at scale, bespoke, actionable, shippable, evidence generation, immediately doable | a literal word. "Robust" and "leverage" are acceptable as defined statistical terms ("robust standard errors"). |
+
 [Add your own writing style rules here: voice, tense, words to avoid, citation style, and the style reference for each type of document.]
+
+## 3.5 Final passes
+
+Do not call a draft finished until you run each pass and find no errors. Run the passes on the rendered output.
+
+1. **Subjects and verbs.** Read only the subjects and verbs, sentence by sentence, also in captions and diagram text. Find each clause with a non-human subject and a non-relational verb. If the clause states a fact, change the verb to a relational verb. Otherwise, change the subject to the person. Then search for the banned verbs in 3.3.
+2. **Figurative language.** For each word, ask whether the word gives its meaning by comparison instead of literally. Search for the left column of the table in 3.2, and for: lens, frame, landscape, navigate, unlock, unpack, anchor, spine, backbone, load-bearing, structural, leverage, journey, tapestry, honest, not just, isn't just, at its core, at the heart.
+3. **Banned words and patterns.** Search for every entry in the table in 3.4, and for em dashes.
+4. **Tables.** Run the checklist in 4.2 on every table, also on tables in chat.
 
 ---
 
