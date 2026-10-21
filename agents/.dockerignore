@@ -1,0 +1,11 @@
+auth
+state
+pending
+worktrees
+scratch
+project
+.git
+config.env
+README.md
+SECURITY.md
+tests

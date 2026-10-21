@@ -1,0 +1,324 @@
+#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+WT="$SCRIPT_DIR/pending"
+SELF="${BASH_SOURCE[0]}"
+source "$SCRIPT_DIR/lib/common.sh"
+
+bgit() {
+    local c="$1"; shift
+    env GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_PAGER=cat GIT_TERMINAL_PROMPT=0 \
+        GIT_DIR="${c}.meta/git" GIT_WORK_TREE="$c" \
+        git -c core.fsmonitor=false -c core.hooksPath=/dev/null -c credential.helper= \
+            -c protocol.file.allow=never -c protocol.ext.allow=never -c core.attributesFile=/dev/null "$@"
+}
+
+# Raw filesystem manifest: path, type, and SHA-256 of the actual bytes on disk,
+# with NO git filters. This is the source of truth for what changed and whether
+# the original diverged. Git is used only to render a human-readable diff, never
+# to decide acceptance, so repo-controlled .gitattributes (ident, clean/smudge)
+# cannot hide a change from the byte-for-byte comparison.
+manifest() { hardened_manifest "$1"; }
+
+# Compare two NUL-delimited manifest files; prints a human summary line.
+manifest_diff_summary() {
+    local basef="$1" nowf="$2"
+    python3 -I - "$basef" "$nowf" <<'PYD'
+import sys
+def load(path):
+    with open(path, 'rb') as fh:
+        data = fh.read()
+    fields = data.split(b'\0')
+    # records are groups of 3 fields: type, path, hash (hash empty for d/s)
+    recs = {}
+    i = 0
+    # drop trailing empty from final terminator
+    while i + 2 < len(fields):
+        typ, p, h = fields[i], fields[i+1], fields[i+2]
+        recs[p] = (typ, h)
+        i += 3
+    return recs
+base = load(sys.argv[1]); now = load(sys.argv[2])
+added = sum(1 for p in now if p not in base)
+removed = sum(1 for p in base if p not in now)
+modified = sum(1 for p in now if p in base and now[p] != base[p])
+if added == 0 and removed == 0 and modified == 0:
+    print("no changes")
+else:
+    print("+%d new, -%d removed, ~%d modified (raw bytes)" % (added, removed, modified))
+PYD
+}
+
+summary() {
+    local c="$1" orig
+    orig="$(cat "${c}.meta/ORIGINAL" 2>/dev/null || printf '?')"
+    local counts="baseline missing; cannot summarize"
+    if [[ -f "${c}.meta/baseline-manifest" ]]; then
+        local ntmp; ntmp="$(mktemp)"
+        manifest "$c" > "$ntmp"
+        counts="$(manifest_diff_summary "${c}.meta/baseline-manifest" "$ntmp")"
+        rm -f "$ntmp"
+    fi
+    printf '%s\n    original: %s\n    changes:  %s\n' "$(basename -- "$c")" "$orig" "$counts"
+}
+
+list() {
+    local found=0 c
+    for c in "$WT"/*; do
+        [[ "$c" == *.meta ]] && continue
+        [[ -d "$c" && -d "${c}.meta" ]] || continue
+        found=1; summary "$c"; printf '\n'
+    done
+    (( found )) || printf 'No pending copies. Create one with ./go <agent> <local-folder> "task"\n'
+}
+
+resolve() {
+    local a="$1"
+    if [[ -d "$a" && -d "${a%/}.meta" ]]; then
+        a="$(cd -- "${a%/}" && pwd -P)"
+        [[ "$a" == "$WT"/* ]] || { printf 'copy is outside the pending directory: %s\n' "$a" >&2; exit 1; }
+        printf '%s' "$a"; return
+    fi
+    if [[ -d "$WT/$a" && -d "$WT/${a}.meta" ]]; then
+        a="$(cd -- "$WT/$a" && pwd -P)"
+        [[ "$a" == "$WT"/* ]] || { printf 'copy is outside the pending directory: %s\n' "$a" >&2; exit 1; }
+        printf '%s' "$a"; return
+    fi
+    printf 'no pending copy matches: %s\n' "$a" >&2; exit 1
+}
+
+case "${1:-list}" in
+    list) list ;;
+    accept-all)
+        shift
+        FORCE=""; [[ "${1:-}" == "--force" ]] && FORCE="--force"
+        mapfile -t COPIES < <(for c in "$WT"/*; do [[ "$c" == *.meta ]] && continue; [[ -d "$c" && -d "${c}.meta" ]] && printf '%s\n' "$c"; done | sort)
+        (( ${#COPIES[@]} )) || { printf 'No pending copies.\n'; exit 0; }
+        printf 'About to accept %d copies, oldest first (later copies win on overlap):\n' "${#COPIES[@]}"
+        for c in "${COPIES[@]}"; do printf '  %s\n' "$(basename -- "$c")"; done
+        if [[ -t 0 ]]; then read -r -t 0.1 -n 10000 _discard 2>/dev/null || true; fi
+        printf "Type 'yes' to apply all onto their originals: "
+        read -r ok; [[ "$ok" == yes ]] || { printf 'aborted\n'; exit 1; }
+        for c in "${COPIES[@]}"; do
+            printf '\n=== %s ===\n' "$(basename -- "$c")"
+            if [[ -n "$FORCE" ]]; then
+                yes yes | bash "$SELF" "$(basename -- "$c")" accept --force || printf '  (kept for inspection)\n'
+            else
+                yes yes | bash "$SELF" "$(basename -- "$c")" accept || printf '  (kept for inspection)\n'
+            fi
+        done
+        printf '\nDone.\n'
+        ;;
+    -h|--help)
+        cat <<'USAGE'
+Usage:
+  ./review                     list pending copies
+  ./review <copy>              summary of one copy
+  ./review <copy> diff         full patch of what the agent changed
+  ./review <copy> accept       make the original exactly match the copy
+  ./review <copy> reject       delete the copy, original untouched
+  ./review accept-all [--force]  accept every pending copy, oldest first
+USAGE
+        ;;
+    *)
+        C="$(resolve "$1")"
+        ACTION="${2:-summary}"
+        case "$ACTION" in
+            summary) summary "$C" ;;
+            diff)
+                bgit "$C" add -Af
+                bgit "$C" diff --cached HEAD
+                ;;
+            accept)
+                FORCE="${3:-}"
+                ORIG="$(cat "${C}.meta/ORIGINAL")"
+                [[ -d "$ORIG" && ! -L "$ORIG" ]] || { printf 'original missing or unsafe: %s\n' "$ORIG" >&2; exit 1; }
+                ORIG="$(cd -- "$ORIG" && pwd -P)"
+                [[ "$ORIG" != "/" && "$ORIG" != "$WT"* ]] || { printf 'refusing suspicious original path: %s\n' "$ORIG" >&2; exit 1; }
+                obgit() {
+                    env GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_PAGER=cat GIT_TERMINAL_PROMPT=0 \
+                        GIT_DIR="${C}.meta/git" GIT_WORK_TREE="$ORIG" \
+                        git -c core.fsmonitor=false -c core.hooksPath=/dev/null -c credential.helper= \
+                            -c protocol.file.allow=never -c protocol.ext.allow=never "$@"
+                }
+                CROOT="$(cd -- "$C" && pwd -P)"
+                BADLINKS=""
+                SPECIAL=""
+                BADNAME=""
+                NESTED=""
+                while IFS= read -r -d '' l; do
+                    case "$l" in
+                        *[[:cntrl:]]*) BADNAME="yes"; break ;;
+                    esac
+                    if [[ "$l" != "$C/.git" && "$(basename -- "$l")" == ".git" ]]; then
+                        NESTED+="$l"$'\n'
+                    fi
+                    if [[ -L "$l" ]]; then
+                        tgt="$(readlink -- "$l")"
+                        # Portable, .git-aware symlink validation (macOS realpath lacks -m).
+                        # Rejects: absolute targets, anything resolving outside the copy,
+                        # and any target whose lexical path passes through a .git component
+                        # (validation trusts the copy's .git, but accept excludes .git, so a
+                        # .git-routed link would resolve differently in the original).
+                        verdict="$(CROOT="$CROOT" python3 -I - "$l" <<'PYV'
+import os, sys
+from pathlib import Path
+link = sys.argv[1]
+croot = os.environ["CROOT"]
+tgt = os.readlink(link)
+if os.path.isabs(tgt):
+    print("absolute"); sys.exit(0)
+
+def has_git(parts):
+    # Case-insensitive so macOS's case-preserving-but-insensitive FS can't slip ".GIT".
+    return any(p.lower() == ".git" for p in parts if p not in ("", ".", ".."))
+
+# Reject if the raw target names a .git component at all.
+if has_git(tgt.split("/")):
+    print("git"); sys.exit(0)
+
+joined = os.path.join(os.path.dirname(link), tgt)
+
+# CHECK 1 - lexical containment BEFORE following any symlink. Catches targets
+# like ../../../proc/self/cwd/... whose raw path leaves the copy textually even
+# though they might resolve back inside at validation time.
+lex = os.path.normpath(joined)
+root_lex = os.path.normpath(croot)
+rel_lex = os.path.relpath(lex, root_lex)
+if rel_lex == os.pardir or rel_lex.startswith(os.pardir + os.sep) or os.path.isabs(rel_lex):
+    print("escapes"); sys.exit(0)
+if has_git(rel_lex.split(os.sep)):
+    print("git"); sys.exit(0)
+
+# CHECK 2 - fully resolved location, following every symlink component. Catches
+# pivot/.. chains that lexical normalization would wrongly collapse.
+try:
+    real = Path(joined).resolve()
+    root = Path(croot).resolve()
+except Exception:
+    print("unresolvable"); sys.exit(0)
+if real != root and root not in real.parents:
+    print("escapes"); sys.exit(0)
+try:
+    rel_parts = real.relative_to(root).parts
+except ValueError:
+    print("escapes"); sys.exit(0)
+if has_git(rel_parts):
+    print("git"); sys.exit(0)
+
+# Both checks passed.
+print("ok")
+PYV
+)"
+                        case "$verdict" in
+                            absolute) BADLINKS+="$l -> $tgt (absolute)"$'\n' ;;
+                            escapes)  BADLINKS+="$l -> $tgt (escapes the copy)"$'\n' ;;
+                            git)      BADLINKS+="$l -> $tgt (routes through .git)"$'\n' ;;
+                            ok)       : ;;
+                            *)        BADLINKS+="$l -> $tgt (unresolvable)"$'\n' ;;
+                        esac
+                    elif [[ ! -f "$l" && ! -d "$l" ]]; then
+                        SPECIAL+="$l"$'\n'
+                    fi
+                done < <(LC_ALL=C find "$C" -path "$C/.git" -prune -o -print0 2>/dev/null)
+                if [[ -n "$BADNAME" ]]; then
+                    printf 'the copy contains a filename with a newline or control character; refusing (not overridable)\n' >&2
+                    exit 1
+                fi
+                if [[ -n "$NESTED" && "$FORCE" != "--force" ]]; then
+                    printf 'the copy contains nested git repositories, whose contents do not appear in the diff:\n%s\n' "$NESTED" >&2
+                    printf 'inspect them by hand, then rerun with:  ./review %s accept --force\n' "$(basename -- "$C")" >&2
+                    exit 1
+                fi
+                if command -v docker >/dev/null 2>&1; then
+                    for cid in $(docker ps --filter label=agents.go=1 -q 2>/dev/null); do
+                        if docker inspect --format '{{range .Mounts}}{{.Source}}{{"\n"}}{{end}}' "$cid" 2>/dev/null | grep -Fxq "$C"; then
+                            printf 'an agent session is still running on this copy; wait for it to finish\n' >&2
+                            exit 1
+                        fi
+                    done
+                fi
+                if [[ -n "$SPECIAL" ]]; then
+                    printf 'the copy contains special files (fifo, socket, or device); refusing to accept:\n%s\n' "$SPECIAL" >&2
+                    exit 1
+                fi
+                if [[ -n "$BADLINKS" ]]; then
+                    printf 'the copy contains unsafe symlinks; refusing (not overridable):\n%s\n' "$BADLINKS" >&2
+                    exit 1
+                fi
+                if [[ "$FORCE" != "--force" ]]; then
+                    if [[ -f "${C}.meta/baseline-manifest" ]]; then
+                        # The baseline manifest was captured from the ORIGINAL at copy
+                        # time. If the original's raw bytes no longer match it, someone
+                        # edited the original since; refuse rather than overwrite.
+                        origtmp="$(mktemp)"
+                        manifest "$ORIG" > "$origtmp"
+                        if ! cmp -s "$origtmp" "${C}.meta/baseline-manifest"; then
+                            rm -f "$origtmp"
+                            printf 'The original changed after this copy was made; accepting would overwrite those edits.\n' >&2
+                            printf 'Inspect first, then rerun with:  ./review %s accept --force\n' "$(basename -- "$C")" >&2
+                            exit 1
+                        fi
+                        rm -f "$origtmp"
+                    fi
+                fi
+                summary "$C"
+                printf 'This makes the original EXACTLY match the copy, including deletions.\n'
+                # Discard anything already sitting in the input buffer, so a
+                # command typed ahead cannot answer this prompt (it would either
+                # abort a wanted accept, or worse, confirm an unwanted one).
+                if [[ -t 0 ]]; then read -r -t 0.1 -n 10000 _discard 2>/dev/null || true; fi
+                printf "Type 'yes' to apply onto %s: " "$ORIG"
+                read -r ok
+                [[ "$ok" == yes ]] || { printf 'aborted\n'; exit 1; }
+                # --checksum, not size+mtime: a change that preserves both (as an
+                # ident-filter edit can) must still be copied.
+                rsync -rl --checksum --delete --exclude=.git -- "$C/" "$ORIG/"
+                # Verify the destination now byte-matches the copy before deleting it;
+                # fail closed (keep the copy) if anything did not land.
+                ctmp="$(mktemp)"; dtmp="$(mktemp)"
+                manifest "$C" > "$ctmp"; manifest "$ORIG" > "$dtmp"
+                if ! cmp -s "$ctmp" "$dtmp"; then
+                    printf 'Copy applied but the original does not byte-match the copy; keeping %s for inspection.\n' "$(basename -- "$C")" >&2
+                    printf 'Differences (path: state in copy vs in original):\n' >&2
+                    python3 -I - "$ctmp" "$dtmp" >&2 <<'PYDIFF'
+import sys
+def load(p):
+    f = open(p,'rb').read().split(b'\0'); r={}; i=0
+    while i+2 < len(f): r[f[i+1]] = (f[i], f[i+2]); i += 3
+    return r
+c = load(sys.argv[1]); d = load(sys.argv[2])
+shown = 0
+for p in sorted(set(c) | set(d)):
+    if c.get(p) == d.get(p): continue
+    name = p.decode('utf-8','replace')
+    if p not in d:   note = "in copy, MISSING from original"
+    elif p not in c: note = "not in copy, still present in original"
+    else:            note = "content differs"
+    print("  %s: %s" % (name, note))
+    shown += 1
+    if shown >= 15:
+        print("  ... (more)"); break
+if shown == 0:
+    print("  (manifests differ but no per-path difference found)")
+PYDIFF
+                    rm -f "$ctmp" "$dtmp"
+                    exit 1
+                fi
+                rm -f "$ctmp" "$dtmp"
+                rm -rf -- "$C" "${C}.meta"
+                printf 'Applied and verified. %s now byte-matches the reviewed copy (permissions were not propagated).\n' "$ORIG"
+                printf 'Note: the copy%ss .git was not transplanted; commit the changes yourself.\n' "'"
+                ;;
+            reject)
+                if [[ -t 0 ]]; then read -r -t 0.1 -n 10000 _discard 2>/dev/null || true; fi
+                printf "Type 'yes' to delete %s: " "$(basename -- "$C")"
+                read -r ok
+                [[ "$ok" == yes ]] || { printf 'aborted\n'; exit 1; }
+                rm -rf -- "$C" "${C}.meta"
+                printf 'Rejected. Your original was never touched.\n'
+                ;;
+            *) printf 'unknown action: %s (try ./review --help)\n' "$ACTION" >&2; exit 1 ;;
+        esac
+        ;;
+esac

@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+docker ps --filter label=agents.go=1 \
+    --format 'table {{.Names}}\t{{.Label "agents.agent"}}\t{{.Label "agents.project"}}\t{{.Status}}'

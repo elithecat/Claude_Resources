@@ -1,0 +1,96 @@
+#:schema https://developers.openai.com/codex/config-schema.json
+#
+# SECURITY BOUNDARY: the Docker container, not Codex.
+# This config deliberately does NOT set default_permissions or define
+# [permissions.*] profiles. Selecting a permission profile puts Codex 0.144+ in
+# profile mode, where it runs its own bubblewrap sandbox for spawned commands
+# and ignores the sandbox flag; inside this unprivileged, cap-dropped container
+# bwrap cannot create a user namespace or mount /proc, so every command fails.
+# Codex is instead launched with `--dangerously-bypass-approvals-and-sandbox`
+# (see `go`), which OpenAI documents for environments where the container
+# provides isolation. That single flag covers both sandboxing and approvals and
+# is accepted by `codex` and `codex exec` alike, unlike `--sandbox` paired with
+# `--ask-for-approval`, which `exec` rejects.
+#
+# TRADEOFF, accepted deliberately: with full access, commands Codex runs in a
+# TRUSTED session can read anything the container can, including the mounted
+# ChatGPT credential at /home/agent/.codex/auth.json and the GitHub token at /gh.
+# That matches this package's stated trusted-mode posture (your own repos, your
+# own credentials). Untrusted code belongs in --locked, which mounts no ChatGPT
+# auth (it uses the API-key proxy), no GitHub token, no Stata license, and has
+# no network beyond the model provider.
+model_provider = "secure_proxy"
+approval_policy = "never"
+allow_login_shell = false
+check_for_update_on_startup = false
+project_doc_max_bytes = 0
+model_instructions_file = "/opt/agent/AGENTS.md"
+web_search = "disabled"
+
+[model_providers.secure_proxy]
+name = "Credential-isolated OpenAI proxy"
+base_url = "http://model-api:8080/v1"
+wire_api = "responses"
+env_key = "OPENAI_API_KEY"
+requires_openai_auth = false
+supports_websockets = false
+request_max_retries = 4
+stream_max_retries = 5
+stream_idle_timeout_ms = 300000
+
+# The workspace is marked trusted so Codex does not open every session by asking
+# you to confirm the folder. This is not a security decision: isolation comes
+# from the container (and, in locked mode, from having no credentials and no
+# network beyond the model provider), not from Codex's own trust prompt.
+[projects."/workspace"]
+trust_level = "trusted"
+
+[apps._default]
+enabled = false
+destructive_enabled = false
+open_world_enabled = false
+
+[memories]
+use_memories = false
+
+[history]
+persistence = "none"
+
+[feedback]
+enabled = false
+
+[analytics]
+enabled = false
+
+# Provider/proxy variables remain available to Codex itself but are stripped
+# from commands spawned inside the sandbox. The GitHub queue variables contain
+# no reusable credential and remain available to the safe `git push` wrapper.
+[shell_environment_policy]
+inherit = "all"
+exclude = [
+  "*KEY*",
+  "*SECRET*",
+  "*TOKEN*",
+  "*PROXY*",
+  "DOCKER_*",
+  "GH_*",
+  "SSH_*"
+]
+
+[features]
+apps = false
+auth_elicitation = false
+browser_use = false
+browser_use_external = false
+browser_use_full_cdp_access = false
+computer_use = false
+hooks = false
+image_generation = false
+in_app_browser = false
+multi_agent = false
+plugin_sharing = false
+plugins = false
+remote_plugin = false
+skill_mcp_dependency_install = false
+tool_call_mcp_elicitation = false
+workspace_dependencies = false

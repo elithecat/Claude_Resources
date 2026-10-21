@@ -1,0 +1,16 @@
+numpy==2.5.1
+pandas==3.0.3
+matplotlib==3.11.0
+seaborn==0.13.2
+scipy==1.18.0
+statsmodels==0.14.6
+scikit-learn==1.9.0
+requests==2.34.2
+jupyter==1.1.1
+jupyterlab==4.6.1
+jupytext==1.19.4
+papermill==2.7.0
+ipywidgets==8.1.8
+ipykernel==6.30.1
+nbstata==0.8.6
+stata-setup==0.1.3

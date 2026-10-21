@@ -1,0 +1,15 @@
+{
+  "skipDangerousModePermissionPrompt": true,
+  "allowManagedMcpServersOnly": true,
+  "allowedMcpServers": [],
+  "permissions": {
+    "deny": [
+      "mcp__*"
+    ],
+    "defaultMode": "bypassPermissions"
+  },
+  "sandbox": {
+    "enabled": false,
+    "autoAllowBashIfSandboxed": false
+  }
+}

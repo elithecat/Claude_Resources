@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+SC="$SCRIPT_DIR/scratch"
+[[ -d "$SC" && ! -L "$SC" ]] || { printf 'no scratch directory\n'; exit 0; }
+SC="$(cd -- "$SC" && pwd -P)"
+
+require_safe() {
+    local e="$1"
+    if [[ -L "$e" ]]; then
+        printf 'scratch entry is a symlink, refusing everything: %s\n' "$e" >&2
+        exit 1
+    fi
+    [[ -d "$e" ]] || return 1
+    CANON_ONE="$(cd -- "$e" && pwd -P)"
+    if [[ "$CANON_ONE" != "$SC"/* ]]; then
+        printf 'entry resolves outside scratch, refusing: %s\n' "$e" >&2
+        exit 1
+    fi
+}
+
+running_on() {
+    command -v docker >/dev/null 2>&1 || return 1
+    local cid
+    for cid in $(docker ps --filter label=agents.go=1 -q 2>/dev/null); do
+        docker inspect --format '{{range .Mounts}}{{.Source}}{{"\n"}}{{end}}' "$cid" 2>/dev/null | grep -Fq "$1" && return 0
+    done
+    return 1
+}
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+    printf 'Usage: ./clean            remove all scratch workspaces (asks first)\n'
+    printf '       ./clean <name>     remove one scratch workspace\n'
+    exit 0
+fi
+
+if (( $# == 1 )); then
+    require_safe "$SC/${1%/}" || { printf 'no scratch workspace named %s\n' "$1" >&2; exit 1; }
+    T="$CANON_ONE"
+    running_on "$T" && { printf 'an agent session is still running there; not removing\n' >&2; exit 1; }
+    printf "Type 'yes' to delete %s: " "$(basename -- "$T")"
+    read -r ok; [[ "$ok" == yes ]] || { printf 'aborted\n'; exit 1; }
+    rm -rf -- "$T"
+    printf 'removed\n'
+    exit 0
+fi
+
+CANON=()
+found=0
+for e in "$SC"/*; do
+    [[ -e "$e" || -L "$e" ]] || continue
+    found=1
+    require_safe "$e" || { printf 'skipping non-directory: %s\n' "$e" >&2; continue; }
+    CANON+=("$CANON_ONE")
+done
+(( found )) || { printf 'No scratch workspaces. URL sessions leave their clones here until you clean.\n'; exit 0; }
+(( ${#CANON[@]} )) || exit 0
+
+printf 'Scratch workspaces (pushed work is already on GitHub):\n'
+for c in "${CANON[@]}"; do
+    printf '  %s  %s\n' "$(du -sh -- "$c" 2>/dev/null | cut -f1)" "$(basename -- "$c")"
+    running_on "$c" && { printf 'an agent session is still running in %s; finish it first\n' "$(basename -- "$c")" >&2; exit 1; }
+done
+printf "Type 'yes' to delete ALL of the above: "
+read -r ok; [[ "$ok" == yes ]] || { printf 'aborted\n'; exit 1; }
+for c in "${CANON[@]}"; do rm -rf -- "$c"; done
+printf 'scratch/ is empty\n'

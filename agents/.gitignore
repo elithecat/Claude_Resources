@@ -1,0 +1,7 @@
+auth/**
+!auth/.gitkeep
+state/
+pending/
+worktrees/
+config.env
+scratch/

@@ -1,0 +1,479 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=lib/common.sh
+source "$SCRIPT_DIR/lib/common.sh"
+hardened_load_config "$SCRIPT_DIR/config.env"
+IMAGE_NAME="${IMAGE_NAME:-agents-research}"
+PROXY_IMAGE_NAME="${PROXY_IMAGE_NAME:-agents-research-proxy}"
+CODEX_VERSION="${CODEX_VERSION:-0.156.1}"
+CLAUDE_VERSION="${CLAUDE_VERSION:-2.1.281}"
+AGENT_VERSION="${AGENT_VERSION:-$CODEX_VERSION}"
+STATA_IMAGE="${STATA_IMAGE:-dataeditors/stata19-se-i-python@sha256:1691fce6250011bef77cb64df58316bc72ed82b9791456e4b804832d9bfd747d}"
+STATA_EDITION="${STATA_EDITION:-se}"
+GIT_USER_NAME="${GIT_USER_NAME:-Research Agent}"
+GIT_USER_EMAIL="${GIT_USER_EMAIL:-research-agent@users.noreply.github.com}"
+MEMORY_LIMIT="${MEMORY_LIMIT:-16g}"
+CPU_LIMIT="${CPU_LIMIT:-4}"
+PIDS_LIMIT="${PIDS_LIMIT:-512}"
+SHM_SIZE="${SHM_SIZE:-1g}"
+PLATFORM="${PLATFORM:-linux/amd64}"
+PROXY_MAX_REQUESTS_INTERACTIVE="${PROXY_MAX_REQUESTS_INTERACTIVE:-1000}"
+PROXY_MAX_REQUESTS_AUTONOMOUS="${PROXY_MAX_REQUESTS_AUTONOMOUS:-2000}"
+MAX_WORKSPACE_MB="${MAX_WORKSPACE_MB:-4096}"
+[[ "$MAX_WORKSPACE_MB" =~ ^[0-9]+$ ]] || hardened_die "MAX_WORKSPACE_MB must be digits only"
+MAX_WORKSPACE_KB=$(( 10#$MAX_WORKSPACE_MB * 1024 ))
+export AGENT_USER=agent
+hardened_validate_common_config
+
+PORT_OFFSET=0
+PORTS_ENABLED=0
+LOCKED=0
+REMEMBER=0
+KEEP_SCRATCH=0
+ONCE=0
+DRY_RUN=0
+
+usage() {
+    cat <<'EOF_USAGE'
+Usage:
+  ./go [options] codex|claude <local-folder | https-github-url> ["<task>"] [branch]
+
+The task is optional: omit it and the agent opens with an empty prompt for you
+to type into. --once requires a task, since it does not stop for input.
+
+Defaults (your picks): full network, GitHub credential mounted (full git),
+Stata mounted, per-project caches, hooks on, MCP off, web tools on,
+repo CLAUDE.md/AGENTS.md loaded, session forgotten at exit.
+Local folders run on a pending review copy (kept for ./review).
+URLs run in a scratch clone that is removed automatically when its work is
+pushed to GitHub; it is kept only if there is unpushed work, or with --keep.
+
+Options:
+  -p, --port-offset N  Publish 3000/5173/8080/8888 plus N on 127.0.0.1
+  --locked             Audit mode: model-only network, no GitHub credential,
+                       no Stata license, stricter agent policy
+  --remember           Persist this session's chat for later /resume
+  --once               Run the task non-interactively and exit when done
+  --dry-run            Print the Docker command without starting containers
+  -h, --help           Show this help
+EOF_USAGE
+}
+
+while (($#)); do
+    case "$1" in
+        -p|--port-offset) (($# >= 2)) || hardened_die "$1 requires a value"; hardened_validate_port_offset "$2"; PORTS_ENABLED=1; shift 2 ;;
+        --locked) LOCKED=1; shift ;;
+        --remember) REMEMBER=1; shift ;;
+        --keep) KEEP_SCRATCH=1; shift ;;
+        --once) ONCE=1; shift ;;
+        --dry-run) DRY_RUN=1; shift ;;
+        -h|--help) usage; exit 0 ;;
+        --) shift; break ;;
+        -*) hardened_die "unknown option: $1" ;;
+        *) break ;;
+    esac
+done
+
+(($# >= 2 && $# <= 4)) || { usage >&2; exit 2; }
+AGENT="$1"; TARGET="$2"; TASK="${3:-}"; BRANCH_ARG="${4:-}"
+if (( LOCKED && REMEMBER )); then hardened_warn "--locked sessions are never remembered"; REMEMBER=0; fi
+case "$AGENT" in codex|claude) ;; *) hardened_die "first argument must be codex or claude" ;; esac
+# A task is optional for interactive sessions: the agent opens with an empty
+# prompt and you type what you want. --once has no interaction, so it needs one.
+if (( ONCE )); then
+    [[ -n "$TASK" ]] || hardened_die "--once needs a task to run"
+fi
+
+MODE=""
+SCRATCH_ROOT=""
+ORIGINAL=""
+if hardened_is_public_github_url "$TARGET"; then
+    MODE=scratch
+    (( DRY_RUN == 0 )) || hardened_die "URL mode is unavailable in --dry-run; use a local directory"
+elif [[ "$TARGET" == *://* || "$TARGET" == git@* ]]; then
+    hardened_die "only local directories and HTTPS github.com URLs are accepted"
+else
+    [[ -z "$BRANCH_ARG" ]] || hardened_die "a branch argument is valid only for a GitHub URL"
+    ORIGINAL="$(hardened_canonical_dir "$TARGET")"
+    hardened_validate_project_path "$SCRIPT_DIR" "$ORIGINAL"
+    [[ "$ORIGINAL" != "$SCRIPT_DIR" && "$ORIGINAL" != "$SCRIPT_DIR"/* ]] \
+        || hardened_die "refusing to run on the agents package directory or anything inside it"
+    # Locked audits never write back to your files: a local folder is copied into
+    # scratch/ and kept for you to read, with no accept step. Only trusted local
+    # sessions use the review-and-accept flow.
+    if (( LOCKED )); then MODE=audit; else MODE=review; fi
+fi
+
+
+case "$MODE" in
+    scratch)
+        (( LOCKED )) || {
+            hardened_reject_symlink_components "$SCRIPT_DIR/auth/gh" "GitHub credential directory"
+            hardened_dir_has_files "$SCRIPT_DIR/auth/gh" || hardened_die "GitHub authentication is missing; run ./authenticate-github.sh login"
+        }
+        if (( LOCKED == 0 )) && hardened_dir_has_files "$SCRIPT_DIR/auth/gh"; then
+            clone_args=("$TARGET"); [[ -z "$BRANCH_ARG" ]] || clone_args+=("$BRANCH_ARG")
+            clone_output="$("$SCRIPT_DIR/clone-private.sh" "${clone_args[@]}")"
+            PROJECT_PATH="$(printf '%s\n' "$clone_output" | sed -n '2p')"
+        else
+            PROJECT_PATH="$(hardened_clone_public_repo "$IMAGE_NAME" "$PLATFORM" "$TARGET" "$BRANCH_ARG" "$SCRIPT_DIR/worktrees")"
+        fi
+        [[ -n "$PROJECT_PATH" && -d "$PROJECT_PATH" ]] || hardened_die "clone did not produce a workspace"
+        hardened_ensure_private_dir "$SCRIPT_DIR/scratch"
+        SCRATCH_DEST="$SCRIPT_DIR/scratch/$(basename -- "$PROJECT_PATH")"
+        mv -- "$PROJECT_PATH" "$SCRATCH_DEST"
+        PROJECT_PATH="$SCRATCH_DEST"
+        PROJECT_KEY="$(hardened_repo_slug "$TARGET")-$(hardened_hash_text "$(hardened_normalize_github_url "$TARGET")" | cut -c1-10)"
+        hardened_note "Scratch workspace: $PROJECT_PATH (kept until you run ./clean)"
+        ;;
+    audit)
+        command -v rsync >/dev/null || hardened_die "rsync is required for audit copies"
+        NAME="$(basename -- "$ORIGINAL")"
+        STAMP="$(date -u +%Y%m%dT%H%M%SZ)-$$"
+        hardened_ensure_private_dir "$SCRIPT_DIR/scratch"
+        AUDIT_DEST="$SCRIPT_DIR/scratch/${NAME}-audit-${STAMP}"
+        if (( DRY_RUN == 0 )); then
+            src_kb="$(du -sk -- "$ORIGINAL" 2>/dev/null | cut -f1)"
+            if [[ -n "$src_kb" && "$src_kb" -gt "$MAX_WORKSPACE_KB" ]]; then
+                hardened_die "workspace is $((src_kb/1024)) MiB, over the ${MAX_WORKSPACE_MB} MiB limit (raise MAX_WORKSPACE_MB in config.env)"
+            fi
+            printf 'Copying %s into a kept audit workspace...\n' "$ORIGINAL"
+            rsync -a -- "$ORIGINAL/" "$AUDIT_DEST/"
+            PROJECT_PATH="$AUDIT_DEST"
+            hardened_note "Locked audit: the agent works on a copy in scratch/ and never writes to your original. Read its findings there, then ./clean."
+        else
+            PROJECT_PATH="$ORIGINAL"
+        fi
+        PROJECT_KEY="$NAME-$(hardened_hash_text "$ORIGINAL" | cut -c1-10)"
+        ;;
+    review)
+        command -v rsync >/dev/null || hardened_die "rsync is required for review copies"
+        NAME="$(basename -- "$ORIGINAL")"
+        STAMP="$(date -u +%Y%m%dT%H%M%SZ)-$$"
+        hardened_ensure_private_dir "$SCRIPT_DIR/pending"
+        COPY="$SCRIPT_DIR/pending/${NAME}-${STAMP}"
+        META="${COPY}.meta"
+        if (( DRY_RUN == 0 )); then
+            src_kb="$(du -sk -- "$ORIGINAL" 2>/dev/null | cut -f1)"
+            if [[ -n "$src_kb" && "$src_kb" -gt "$MAX_WORKSPACE_KB" ]]; then
+                hardened_die "workspace is $((src_kb/1024)) MiB, over the ${MAX_WORKSPACE_MB} MiB limit (raise MAX_WORKSPACE_MB in config.env)"
+            fi
+            printf 'Copying %s into a pending review copy...\n' "$ORIGINAL"
+            rsync -a -- "$ORIGINAL/" "$COPY/"
+            mkdir -p "$META"
+            printf '%s\n' "$ORIGINAL" > "$META/ORIGINAL"
+            # Raw baseline manifest captured with NO git filters. This, not git, is
+            # the source of truth for what the agent changed and whether the original
+            # diverged, so repo-controlled .gitattributes cannot hide a change at
+            # accept time. Byte-safe (NUL-delimited, hashed symlink targets) and
+            # fail-closed on hashing errors.
+            hardened_manifest "$COPY" > "$META/baseline-manifest"
+            hbg() { env GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_PAGER=cat GIT_TERMINAL_PROMPT=0 \
+                GIT_DIR="$META/git" GIT_WORK_TREE="$COPY" \
+                git -c core.fsmonitor=false -c core.hooksPath=/dev/null -c core.sshCommand=/bin/false \
+                    -c credential.helper= -c protocol.file.allow=never -c protocol.ext.allow=never \
+                    -c gpg.program=/bin/false -c log.showSignature=false -c core.attributesFile=/dev/null -c core.autocrlf=false "$@"; }
+            hbg init -q
+            hbg -c user.name=review -c user.email=review@local add -Af
+            hbg -c user.name=review -c user.email=review@local commit -qm baseline --allow-empty
+            PROJECT_PATH="$COPY"
+            hardened_note "Agent runs on the copy; your original will not change. Afterwards: ./review"
+        else
+            PROJECT_PATH="$ORIGINAL"
+        fi
+        PROJECT_KEY="$NAME-$(hardened_hash_text "$ORIGINAL" | cut -c1-10)"
+        ;;
+esac
+hardened_validate_project_path "$SCRIPT_DIR" "$PROJECT_PATH"
+
+STATE="$SCRIPT_DIR/state"
+CACHE="$STATE/cache/$PROJECT_KEY"
+SESS="$STATE/sessions/$AGENT/$PROJECT_KEY"
+hardened_ensure_private_dir "$STATE"
+hardened_ensure_private_dir "$STATE/cache"
+hardened_ensure_private_dir "$CACHE"
+hardened_ensure_private_dir "$CACHE/R"
+hardened_ensure_private_dir "$CACHE/python"
+hardened_ensure_private_dir "$CACHE/stata-ado"
+if (( REMEMBER )); then
+    hardened_ensure_private_dir "$STATE/sessions"
+    hardened_ensure_private_dir "$STATE/sessions/$AGENT"
+    hardened_ensure_private_dir "$SESS"
+fi
+
+RUN_TMP="$(hardened_make_run_tmp "$SCRIPT_DIR")"
+GITCONFIG="$RUN_TMP/gitconfig"
+hardened_make_gitconfig "$GITCONFIG"
+cleanup_tmp() { rm -rf -- "$RUN_TMP"; }
+trap 'status=$?; trap - EXIT INT TERM; hardened_cleanup_proxy 2>/dev/null || true; cleanup_tmp; exit $status' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+if (( DRY_RUN == 0 )); then hardened_require_command docker; fi
+if (( DRY_RUN == 0 )) && [[ -z "$(docker ps -q --filter label=agents.go=1 2>/dev/null)" ]]; then
+    docker ps -aq --filter label=agents.proxy=1 2>/dev/null | xargs -r docker rm -f >/dev/null 2>&1 || true
+    docker network ls -q --filter label=agents.proxy=1 2>/dev/null | xargs -r docker network rm >/dev/null 2>&1 || true
+fi
+PROXY_LIMIT="$PROXY_MAX_REQUESTS_INTERACTIVE"
+(( ONCE )) && PROXY_LIMIT="$PROXY_MAX_REQUESTS_AUTONOMOUS"
+hardened_build_security_args
+hardened_add_git_environment
+
+STATA_LICENSE=""
+if (( LOCKED == 0 )); then
+    STATA_LICENSE="$(hardened_secret_file "$SCRIPT_DIR/auth/STATA.LIC" "Stata license")" \
+        || hardened_die "Stata license missing at auth/STATA.LIC; run ../copy-stata-license.sh or ./setup-stata-license.sh"
+fi
+
+if [[ "$AGENT" == claude ]]; then
+    if [[ -s "$SCRIPT_DIR/auth/secrets/claude_setup_token" ]]; then
+        PROXY_MODE=anthropic-oauth
+        PROXY_SECRET_FILE="$SCRIPT_DIR/auth/secrets/claude_setup_token"
+    elif [[ -s "$SCRIPT_DIR/auth/secrets/claude_api_key" ]]; then
+        PROXY_MODE=anthropic-api-key
+        PROXY_SECRET_FILE="$SCRIPT_DIR/auth/secrets/claude_api_key"
+    else
+        hardened_die "no Claude credential; run ./authenticate-claude.sh setup-token"
+    fi
+fi
+
+ALLOW_NET=$(( LOCKED == 0 ? 1 : 0 ))
+if (( DRY_RUN )); then
+    AGENT_NETWORK=agents-preview
+    PROXY_CLIENT_TOKEN=preview-client-token-not-a-provider-secret
+    if (( ALLOW_NET )); then
+        AGENT_NETWORK_DOCKER_ARGS=(--network "$AGENT_NETWORK")
+    else
+        AGENT_NETWORK_DOCKER_ARGS=(--network "$AGENT_NETWORK" --dns 192.0.2.53 --add-host model-api:192.0.2.10 --add-host codex-egress:192.0.2.10)
+    fi
+else
+    if [[ "$AGENT" == claude ]]; then
+        PROXY_SECRET="$(hardened_secret_file "$PROXY_SECRET_FILE" "Claude credential")"
+        hardened_start_proxy "$PROXY_MODE" "$PROXY_SECRET" "$PROXY_IMAGE_NAME" "$ALLOW_NET" "$PROXY_LIMIT"
+    else
+        if (( ALLOW_NET )); then
+            hardened_start_direct_agent_network
+        else
+            CODEX_KEY_FILE="$(hardened_secret_file "$SCRIPT_DIR/auth/secrets/codex_api_key" "OpenAI API key")" \
+                || hardened_die "locked Codex uses the credential proxy and needs an API key: ./authenticate-codex.sh api-key (or use claude for this audit)"
+            hardened_start_proxy "openai-api-key" "$CODEX_KEY_FILE" "$PROXY_IMAGE_NAME" 0 "$PROXY_LIMIT"
+        fi
+    fi
+fi
+
+docker_args=(
+    run --rm
+    --platform "$PLATFORM"
+    --label agents.go=1
+    --label "agents.agent=$AGENT"
+    --label "agents.project=$PROJECT_KEY"
+    "${SECURITY_ARGS[@]}"
+    "${AGENT_NETWORK_DOCKER_ARGS[@]}"
+    --mount "type=bind,src=$PROJECT_PATH,dst=/workspace"
+    -e "AGENT_KIND=$AGENT"
+)
+if (( ONCE == 0 )); then docker_args+=(-it); fi
+PORT_SUMMARY=none
+if (( PORTS_ENABLED )); then
+    PORT_A=$((3000 + PORT_OFFSET)); PORT_B=$((5173 + PORT_OFFSET))
+    PORT_C=$((8080 + PORT_OFFSET)); PORT_D=$((8888 + PORT_OFFSET))
+    docker_args+=(
+        --publish "127.0.0.1:${PORT_A}:3000" --publish "127.0.0.1:${PORT_B}:5173"
+        --publish "127.0.0.1:${PORT_C}:8080" --publish "127.0.0.1:${PORT_D}:8888"
+    )
+    PORT_SUMMARY="127.0.0.1:$PORT_A, $PORT_B, $PORT_C, $PORT_D"
+fi
+docker_args+=(
+    --mount "type=bind,src=$GITCONFIG,dst=/etc/agent-gitconfig,readonly"
+)
+if (( LOCKED == 0 )); then
+    docker_args+=(
+        --mount "type=bind,src=$CACHE/R,dst=/home/agent/R/library"
+        --mount "type=bind,src=$CACHE/python,dst=/home/agent/.local"
+        --mount "type=bind,src=$CACHE/stata-ado,dst=/home/agent/ado"
+    )
+fi
+if [[ "$AGENT" == codex ]]; then
+    i=0
+    while (( i < ${#GIT_ENV_ARGS[@]} )); do
+        a="${GIT_ENV_ARGS[$i]}"
+        if [[ "$a" == "-e" && $((i + 1)) -lt ${#GIT_ENV_ARGS[@]} ]]; then
+            b="${GIT_ENV_ARGS[$((i + 1))]}"
+            case "$b" in
+                GIT_CONFIG_COUNT=*|GIT_CONFIG_KEY_*|GIT_CONFIG_VALUE_*) i=$((i + 2)); continue ;;
+            esac
+            docker_args+=(-e "$b"); i=$((i + 2)); continue
+        fi
+        docker_args+=("$a"); i=$((i + 1))
+    done
+else
+    docker_args+=("${GIT_ENV_ARGS[@]}")
+fi
+if (( LOCKED == 0 )); then
+    if [[ "$AGENT" == codex ]]; then
+        # Codex scrubs GH_* from subprocess env, so GH_CONFIG_DIR would not reach
+        # the gh helper. Bake the config dir into the helper command itself, which
+        # rides in the mounted gitconfig file and is immune to env scrubbing.
+        printf '[credential]\n    helper = "!GH_CONFIG_DIR=/gh gh auth git-credential"\n' >> "$GITCONFIG"
+    else
+        docker_args+=(-e "GIT_CONFIG_VALUE_1=!gh auth git-credential" -e GH_CONFIG_DIR=/gh)
+    fi
+    docker_args+=(
+        --mount "type=bind,src=$SCRIPT_DIR/auth/gh,dst=/gh,readonly"
+        --mount "type=bind,src=$STATA_LICENSE,dst=/usr/local/stata/stata.lic,readonly"
+    )
+fi
+
+NOTES=/opt/agent/AGENTS.md
+NOTES_SRC="$SCRIPT_DIR/AGENTS.md"
+if (( LOCKED )); then NOTES=/opt/agent/AGENTS-locked.md; NOTES_SRC="$SCRIPT_DIR/AGENTS-locked.md"; fi
+# Bind-mounted over the baked copy so wording changes take effect on unzip,
+# without rebuilding the image.
+if [[ -f "$NOTES_SRC" ]]; then
+    docker_args+=(--mount "type=bind,src=$NOTES_SRC,dst=$NOTES,readonly")
+fi
+
+if [[ "$AGENT" == claude ]]; then
+    POLICY="$SCRIPT_DIR/managed-default.json"
+    if (( LOCKED )); then POLICY="$SCRIPT_DIR/managed-locked.json"; fi
+    docker_args+=(
+        --mount "type=bind,src=$POLICY,dst=/etc/claude-code/managed-settings.json,readonly"
+        -e ANTHROPIC_BASE_URL=http://model-api:8080
+        # MUST be 0. With =1, Claude Code 2.1.209+ overrides
+        # --dangerously-skip-permissions back to default permission mode, and
+        # wraps bash in bubblewrap with --unshare-pid --proc /proc, which this
+        # cap-dropped container cannot do; that reintroduces the bwrap failure
+        # even though sandbox.enabled=false in managed settings.
+        # Safe to disable: the reusable Anthropic credential lives in the proxy
+        # sidecar and never enters this container. Subprocesses can see only
+        # PROXY_CLIENT_TOKEN, an ephemeral per-run token scoped to the proxy and
+        # bounded by its request budget.
+        -e CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=0
+    )
+    # NOTE: we do NOT set CLAUDE_CODE_SANDBOXED, and managed-settings.json sets
+    # "sandbox".enabled=false. Claude's bash sandbox cannot run here: bubblewrap
+    # must create a user namespace, which this cap-dropped container blocks, and
+    # even Anthropic's enableWeakerNestedSandbox compatibility mode (which fixes
+    # the /proc mount) still needs that namespace. Docker is the boundary, so
+    # Claude executes commands directly in the container. Locked mode's real
+    # protection is the container plus having no credentials and no network
+    # beyond the model provider.
+    if [[ "$PROXY_MODE" == anthropic-api-key ]]; then
+        docker_args+=(-e "ANTHROPIC_API_KEY=$PROXY_CLIENT_TOKEN")
+    else
+        docker_args+=(-e "CLAUDE_CODE_OAUTH_TOKEN=$PROXY_CLIENT_TOKEN")
+    fi
+    if (( REMEMBER )); then
+        docker_args+=(--mount "type=bind,src=$SESS,dst=/home/agent/.claude/projects")
+    fi
+    docker_args+=("$IMAGE_NAME" claude)
+    # Pin the model so Claude does not fall back to the account default. Set
+    # CLAUDE_MODEL in config.env (e.g. "opus"); empty means use the account default.
+    if [[ -n "${CLAUDE_MODEL:-}" ]]; then docker_args+=(--model "$CLAUDE_MODEL"); fi
+    # --safe-mode is deliberately NOT used, even in locked mode: it contradicts
+    # --dangerously-skip-permissions below and makes Claude ask for approval on
+    # every action, which is not protection here. Docker is the boundary, and
+    # locked mode already has no credentials and no network beyond the model.
+    # --setting-sources user in EVERY mode: never read the repo's own
+    # .claude/settings.json or .claude/settings.local.json. Two reasons. It stops
+    # Claude opening each session with a trust dialog about pre-approved
+    # permissions (the container's /workspace looks like a brand-new folder every
+    # run, since /home/agent is a tmpfs, so the dialog would never stop
+    # appearing). And it means a repository cannot pre-approve tool permissions
+    # for itself, which matters most for --locked audits. Permissions come from
+    # the managed policy file instead.
+    docker_args+=(--setting-sources user)
+    if (( LOCKED )); then docker_args+=(--strict-mcp-config); fi
+    docker_args+=(--dangerously-skip-permissions --append-system-prompt-file "$NOTES")
+    if (( ONCE )); then
+        docker_args+=(-p -- "$TASK")
+    elif [[ -n "$TASK" ]]; then
+        docker_args+=(-- "$TASK")
+    fi
+else
+    if (( LOCKED )); then
+        docker_args+=(-e "OPENAI_API_KEY=$PROXY_CLIENT_TOKEN")
+    else
+        CODEX_DIR="$SCRIPT_DIR/auth/codex"
+        hardened_reject_symlink_components "$CODEX_DIR" "Codex credential directory"
+        [[ -s "$CODEX_DIR/auth.json" ]] || { (( DRY_RUN )) || hardened_die "no Codex login; run ./authenticate-codex.sh chatgpt"; }
+        docker_args+=(
+            --mount "type=bind,src=$CODEX_DIR,dst=/home/agent/.codex"
+            -e CODEX_HOME=/home/agent/.codex
+        )
+    fi
+    if (( REMEMBER && LOCKED == 0 )); then
+        docker_args+=(--mount "type=bind,src=$SESS,dst=/home/agent/.codex/sessions")
+    else
+        hardened_resolve_host_identity
+        docker_args+=(--tmpfs "/home/agent/.codex/sessions:rw,nosuid,nodev,size=256m,uid=$HARDENED_HOST_UID,gid=$HARDENED_HOST_GID,mode=0700")
+    fi
+    docker_args+=("$IMAGE_NAME")
+    CODEX_CMD=(codex)
+    if (( ONCE )); then CODEX_CMD=(codex exec); fi
+    docker_args+=("${CODEX_CMD[@]}")
+    # Docker is the isolation boundary, so Codex must neither nest its own
+    # sandbox (bubblewrap cannot create a user namespace or mount /proc in this
+    # cap-dropped container) nor stop for approvals. This single flag expresses
+    # both and is accepted by `codex` and `codex exec` alike; `--sandbox` plus
+    # `--ask-for-approval` is not, since `exec` rejects the latter. No permission
+    # profile is defined in the baked config, which would otherwise put Codex in
+    # profile mode and re-enable the inner sandbox.
+    docker_args+=(--dangerously-bypass-approvals-and-sandbox)
+    if (( LOCKED == 0 )); then
+        docker_args+=(
+            -c 'model_provider="openai"'
+            -c 'cli_auth_credentials_store="file"'
+            -c 'forced_login_method="chatgpt"'
+        )
+    fi
+    docker_args+=(-c "model_instructions_file=\"$NOTES\"")
+    if (( ALLOW_NET )); then docker_args+=(-c 'project_doc_max_bytes=32768'); fi
+    if [[ -n "$TASK" ]]; then docker_args+=("$TASK"); fi
+fi
+
+cat <<EOF_STATUS
+=== agents ===
+Agent:          $AGENT
+Mode:           $MODE$([[ "$LOCKED" == 1 ]] && printf ' (locked audit)')$([[ "$ONCE" == 1 ]] && printf ', run once')
+Workspace:      $PROJECT_PATH
+Network:        $([[ "$ALLOW_NET" == 1 ]] && printf 'general internet' || printf 'model provider only')
+GitHub:         $([[ "$LOCKED" == 0 ]] && printf 'full git with mounted read-only token' || printf 'no credential; no push')
+Stata:          $([[ "$LOCKED" == 0 ]] && printf 'mounted read-only' || printf 'not mounted')
+Session memory: $([[ "$REMEMBER" == 1 ]] && printf 'kept for /resume' || printf 'forgotten at exit')
+Ports:          $PORT_SUMMARY
+EOF_STATUS
+if (( LOCKED == 0 )); then hardened_warn "your GitHub token and Stata license are readable by everything in this session"; fi
+
+if (( DRY_RUN )); then
+    hardened_print_command docker "${docker_args[@]}"
+else
+    docker "${docker_args[@]}"
+fi
+if [[ "$DRY_RUN" == 0 ]]; then
+    case "$MODE" in
+        review)  printf '\nPending copy ready. Inspect it with:  ./review\n' ;;
+        audit)   printf '\nAudit workspace kept at %s\nRead the findings there, then remove it with:  ./clean\n' "$PROJECT_PATH" ;;
+        scratch)
+            if (( KEEP_SCRATCH )); then
+                printf '\nScratch workspace kept at %s (--keep). Remove it with:  ./clean\n' "$PROJECT_PATH"
+            else
+                # Clean up the clone by default, but ONLY when its work is safely
+                # on GitHub. If there are uncommitted changes or commits that were
+                # never pushed, keep the clone and say so loudly, so nothing is
+                # ever lost. Use --keep to always retain it. Checks run through a
+                # sterile git wrapper so a hostile repo cannot execute config.
+                unsaved="$(hardened_scratch_unsaved_reason "$PROJECT_PATH")"
+                if [[ -n "$unsaved" ]]; then
+                    printf '\n⚠ Keeping scratch workspace at %s\n  Reason: %s. Push or copy it out, then remove with:  ./clean\n' "$PROJECT_PATH" "$unsaved"
+                else
+                    rm -rf -- "$PROJECT_PATH"
+                    printf '\nSession work is pushed to GitHub; scratch clone removed. Use --keep to retain it next time.\n'
+                fi
+            fi
+            ;;
+    esac
+fi
