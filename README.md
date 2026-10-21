@@ -22,16 +22,16 @@ Write down the explanations that you repeat in each session. Update the file as 
 
 ## CLAUDE.md locations
 
-Your "working folder" is the folder where you start Claude Code. At the start of a session, Claude Code reads the CLAUDE.md files in your working folder and in the folders above it. Claude Code reads a file in a subfolder when Claude reads or edits a file in that subfolder. Claude Code combines all the files that apply, and it reads the files closest to your working folder last.
+Your "working folder" is the folder where you start Claude Code. At the start of a session, Claude Code reads the CLAUDE.md files in your working folder and in the folders above it. Claude Code reads the CLAUDE.md file in a subfolder when Claude reads or edits another file in that subfolder. Claude Code combines all the files that apply, and it reads the files closest to your working folder last. A "cloud session" is a Claude Code session at claude.ai/code, on a computer that Anthropic manages.
 
 Table 1. Locations of CLAUDE.md files, from the broadest scope to the narrowest. For example, the first row shows that the rules in `~/.claude/CLAUDE.md` apply only to you, in every project on your computer. Sources: Anthropic, "How Claude remembers your project" and "Configure cloud environments."
 
 | Scope | Location | Use for | Applies to |
 |---|---|---|---|
-| Your rules, every project | `~/.claude/CLAUDE.md` on your computer | General rules that you like | Only you, in every project on your computer; cloud sessions do not read this file |
+| Your rules, every project | `~/.claude/CLAUDE.md` on your computer | General rules that you like | Only you, in every project on your computer; cloud sessions do not have this file |
 | Project rules | `CLAUDE.md` or `.claude/CLAUDE.md` in the project folder | Project description and project rules | Everyone who uses the repository, also in cloud sessions |
 | Your notes on one project | `CLAUDE.local.md` in the project folder (add it to `.gitignore`) | Personal instructions for one project | Only you, in that project on your computer; cloud sessions do not have this file |
-| Subfolder rules | `CLAUDE.md` in a subfolder | Rules for one part of a project | Everyone who uses the repository |
+| Subfolder rules | `CLAUDE.md` in a subfolder | Rules for one part of a project | Everyone who uses the repository, also in cloud sessions |
 
 Organizations can also set one policy file for all of their users.
 
@@ -43,11 +43,12 @@ You can manage CLAUDE.md files with two commands and one kind of line:
 
 ## Template setup
 
-1. Copy `CLAUDE_template.md` to `CLAUDE.md` in a repository, for rules in one project. Cloud sessions read this file.
-2. Or copy `CLAUDE_template.md` to `~/.claude/CLAUDE.md` on your computer, for rules in every project on that computer. Cloud sessions do not read this file.
-3. Fill in the items in [brackets].
-4. Delete the rules that you do not want. The template has 365 lines, and Anthropic suggests fewer than 200 lines per file.
-5. Add your own rules.
+1. Copy `CLAUDE_template.md` to one of these places:
+   - `CLAUDE.md` in a repository, for rules in one project. After you commit and push the file to GitHub, Claude Code also reads it in cloud sessions.
+   - `~/.claude/CLAUDE.md` on your computer, for rules in every project on that computer. Cloud sessions do not have this file.
+2. Fill in the items in [brackets].
+3. Delete the rules that you do not want. The template has 365 lines, and Anthropic suggests fewer than 200 lines per file.
+4. Add your own rules.
 
 ## New projects
 
@@ -71,7 +72,7 @@ The folder [`claude-code-docker-setup/`](claude-code-docker-setup/) contains scr
 
 - [`README.md`](claude-code-docker-setup/README.md) in that folder is a step-by-step guide: requirements, one-time setup, daily use, and troubleshooting.
 - [`QUICKSTART.md`](claude-code-docker-setup/QUICKSTART.md) lists the commands alone.
-- [`SECURITY.md`](claude-code-docker-setup/SECURITY.md) describes the security model and its known limits.
+- [`SECURITY.md`](claude-code-docker-setup/SECURITY.md) describes the security model and its known weaknesses.
 
 ## Sources
 
