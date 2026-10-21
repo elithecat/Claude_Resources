@@ -22,9 +22,9 @@ Write down the explanations that you repeat in each session. Update the file as 
 
 ## CLAUDE.md locations
 
-Your "working folder" is the folder where you start Claude Code. At the start of a session, Claude Code reads the CLAUDE.md files in your working folder and in the folders above it. Claude Code reads the CLAUDE.md file in a subfolder when Claude reads or edits another file in that subfolder. Claude Code combines all the files that apply, and it reads the files closest to your working folder last. A "cloud session" is a Claude Code session at claude.ai/code, on a computer that Anthropic manages.
+Your "working folder" is the folder where you start Claude Code. At the start of a session, Claude Code reads the CLAUDE.md files in your working folder and in the folders above it. Claude Code reads the CLAUDE.md file in a subfolder when Claude reads or edits another file in that subfolder. Claude Code combines all the files that apply, and it reads the files closest to your working folder last.
 
-Table 1. Locations of CLAUDE.md files, from the broadest scope to the narrowest. For example, the first row shows that the rules in `~/.claude/CLAUDE.md` apply only to you, in every project on your computer. Sources: Anthropic, "How Claude remembers your project" and "Configure cloud environments."
+Table 1. Locations of CLAUDE.md files, from the broadest scope to the narrowest. A "cloud session" is a Claude Code session at claude.ai/code, on a computer that Anthropic manages. For example, the first row shows that the rules in `~/.claude/CLAUDE.md` apply only to you, in every project on your computer. Sources: Anthropic, "How Claude remembers your project" and "Configure cloud environments."
 
 | Scope | Location | Use for | Applies to |
 |---|---|---|---|
@@ -68,7 +68,7 @@ Sources: Anthropic, "Best practices for Claude Code," and Alyssa Bilinski.
 
 ## Docker
 
-The folder [`claude-code-docker-setup/`](claude-code-docker-setup/) contains scripts that run Claude Code or Codex in a Docker container on your computer. The container has R, Python, Stata, and LaTeX.
+The folder [`claude-code-docker-setup/`](claude-code-docker-setup/) contains scripts that run Claude Code or Codex in a Docker container on your computer. The container has R, Python, Stata, and LaTeX. In this setup, Claude Code does not load CLAUDE.md files. To use the rules in a project's CLAUDE.md, start each task with "Read CLAUDE.md and follow its rules."
 
 - [`README.md`](claude-code-docker-setup/README.md) in that folder is a step-by-step guide: requirements, one-time setup, daily use, and troubleshooting.
 - [`QUICKSTART.md`](claude-code-docker-setup/QUICKSTART.md) lists the commands alone.
