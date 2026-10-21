@@ -12,7 +12,7 @@ Materials for the workshop "Getting Started with Claude Code" (Brown University,
 
 ## Purpose of CLAUDE.md
 
-CLAUDE.md is a plain-text (Markdown) file of instructions. Claude Code loads it at the start of every session, except in the Docker setup (see "Docker" below). Use it to:
+CLAUDE.md is a plain-text (Markdown) file of instructions. Claude Code loads it at the start of every session, except in the Docker setup (see "Docker" below). Use CLAUDE.md to:
 
 - explain the project: what it is, where the files are, and how to run it;
 - set rules for one project, for example the build command, the folder layout, or what to commit;
