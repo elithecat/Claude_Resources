@@ -3,6 +3,7 @@
 Materials for the workshop "Getting Started with Claude Code" (Brown University, October 21, 2026).
 
 - `CLAUDE_template.md`: a general rules file to copy and adapt.
+- `beamer_template/`: Alyssa's beamer slide template, shown with her deck "Using LLMs in research" (September 2026). Compile `llms_2026_research_slides.tex` with XeLaTeX. On Overleaf, set the compiler to XeLaTeX. The theme uses the Libertinus fonts. The script `code/llm_expectation_curve.R` draws the figures.
 - Docker: [setup resources to be added].
 
 ## What CLAUDE.md does

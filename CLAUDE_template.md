@@ -114,6 +114,10 @@ Put slow computations in scripts that save their results to `0_Data/`, and the f
 - **Use the build command and build folder of the project.** [State the build command here.] Reference figures and tables by relative paths.
 - **Regenerate dependent outputs in the same commit.** Before you commit, run the script that creates each cached file again, and render the document again.
 
+## 2.5 Slides
+
+- **Build slides from the template of the project:** [the path to your template]. For beamer slides, one starting point is `beamer_template/` in the Claude Resources repository (<https://github.com/elithecat/claude_resources>). Copy the deck and its `theme/` folder, and compile with XeLaTeX. The theme uses the Libertinus fonts.
+
 ---
 
 # Part 3. Writing
