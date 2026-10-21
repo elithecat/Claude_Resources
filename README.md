@@ -2,21 +2,22 @@
 
 Materials for the workshop "Getting Started with Claude Code" (Brown University, October 21, 2026).
 
+- `claude_code_workshop_slides.pdf`: the workshop slides, one page per slide.
 - `CLAUDE_template.md`: a general rules file to copy and adapt.
 - `beamer_template/`: Alyssa's beamer slide template, shown with her deck "Using LLMs in research" (September 2026). Compile `llms_2026_research_slides.tex` with XeLaTeX. On Overleaf, set the compiler to XeLaTeX. The theme uses the Libertinus fonts. The script `code/llm_expectation_curve.R` draws the figures.
 - `agents_30.zip`: a Docker setup that runs Claude Code or Codex in a container, for research in Python, R, Stata, and TeX. See "Docker" below.
 
-## What CLAUDE.md does
+## Purpose of CLAUDE.md
 
 CLAUDE.md is a plain-text (Markdown) file of instructions. Claude Code reads it at the start of every session. Use it to:
 
-- explain the project: what it is, where files live, and how to run it;
+- explain the project: what it is, where the files are, and how to run it;
 - set rules for one project, for example the build command, the folder layout, or what to commit;
 - keep general rules that you want in every project, for example "never make up numbers" or "ask before you delete files."
 
 Write down what you would otherwise explain again in each session. When Claude makes the same mistake twice, add a rule. Keep each file short (Anthropic suggests fewer than about 200 lines), and write rules that you could check: "Run the tests before you commit," instead of "Test your changes."
 
-## Where CLAUDE.md files live
+## CLAUDE.md locations
 
 Table 1. Locations of CLAUDE.md files, from the broadest scope to the narrowest. Claude Code reads every file that applies and combines them; it reads the files closest to your working folder last. Files in the folders above the folder where you start Claude load at the start of the session. Files in subfolders load when Claude reads or edits a file in that subfolder. Source: Anthropic, "How Claude remembers your project."
 
@@ -57,7 +58,7 @@ Source: Anthropic, "Best practices for Claude Code," and Alyssa Bilinski.
 
 ## Docker
 
-`agents_30.zip` holds a Docker setup for Claude Code and Codex. To use it:
+`agents_30.zip` contains a Docker setup for Claude Code and Codex. To use it:
 
 1. Install Docker Desktop: https://www.docker.com/products/docker-desktop/
 2. Unzip the file.
