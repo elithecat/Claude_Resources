@@ -1,4 +1,6 @@
-# agents
+# Claude Code Docker setup: quick reference
+
+> New to Docker? See [README.md](README.md) for the step-by-step guide.
 
 One container setup for Codex and Claude Code, built for research work in
 Python, R, Stata, and TeX. One command runs either agent with your defaults
@@ -14,7 +16,7 @@ forgotten at exit unless you ask to remember.
 ## One-time setup
 
 ```bash
-cd agents
+cd claude-code-docker-setup
 ./setup.sh
 ./authenticate-github.sh login
 ./authenticate-codex.sh chatgpt

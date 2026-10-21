@@ -5,7 +5,7 @@ Materials for the workshop "Getting Started with Claude Code" (Brown University,
 - `claude_code_workshop_slides.pdf`: the workshop slides, one page per slide.
 - `CLAUDE_template.md`: a general rules file to copy and adapt.
 - `beamer_template/`: Alyssa's beamer slide template, shown with her deck "Using LLMs in research" (September 2026). Compile `llms_2026_research_slides.tex` with XeLaTeX. On Overleaf, set the compiler to XeLaTeX. The theme uses the Libertinus fonts. The script `code/llm_expectation_curve.R` draws the figures.
-- `agents/`: a Docker setup that runs Claude Code or Codex in a container, for research in Python, R, Stata, and TeX. See "Docker" below.
+- `claude-code-docker-setup/`: scripts that run Claude Code or Codex in a Docker container, with R, Python, Stata, and LaTeX. See "Docker" below.
 
 ## Purpose of CLAUDE.md
 
@@ -34,13 +34,13 @@ Organizations can also set one policy file for all of their users. Three command
 - `/memory` opens your CLAUDE.md files so that you can edit them.
 - A line such as `@docs/setup.md` in a CLAUDE.md file imports another file.
 
-## How to use the template
+## Using the template
 
 1. Copy `CLAUDE_template.md` to `~/.claude/CLAUDE.md` for rules in every project, or to `CLAUDE.md` in a repository for one project.
 2. Fill in the items in [brackets].
 3. Delete the rules that you do not want, and add your own.
 
-## Getting started with a project
+## Starting a project
 
 - **Describe the project:** what it is and what it is for.
 - **Give context:** the documents that will be useful.
@@ -58,13 +58,11 @@ Source: Anthropic, "Best practices for Claude Code," and Alyssa Bilinski.
 
 ## Docker
 
-The folder `agents/` contains a Docker setup for Claude Code and Codex. To use it:
+The folder [`claude-code-docker-setup/`](claude-code-docker-setup/) contains scripts that run Claude Code or Codex in a Docker container on your computer. The container has R, Python, Stata, and LaTeX.
 
-1. Install Docker Desktop: https://www.docker.com/products/docker-desktop/
-2. Download this repository (on GitHub, select **Code**, then **Download ZIP**), or clone it.
-3. Follow the one-time setup in [`agents/README.md`](agents/README.md).
-
-[`agents/SECURITY.md`](agents/SECURITY.md) describes what the container protects against and the risks that remain.
+- [`README.md`](claude-code-docker-setup/README.md) in that folder is a step-by-step guide: requirements, one-time setup, daily use, and troubleshooting.
+- [`QUICKSTART.md`](claude-code-docker-setup/QUICKSTART.md) lists the commands alone.
+- [`SECURITY.md`](claude-code-docker-setup/SECURITY.md) describes the security model and its known limits.
 
 ## Sources
 
