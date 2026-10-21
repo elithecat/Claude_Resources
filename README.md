@@ -4,7 +4,10 @@ Materials for the workshop "Getting Started with Claude Code" (Brown University,
 
 - `claude_code_workshop_slides.pdf`: the workshop slides, one page per slide.
 - `CLAUDE_template.md`: a general rules file to copy and adapt.
-- `beamer_template/`: Alyssa's beamer slide template, shown with her deck "Using LLMs in research" (September 2026). Compile `llms_2026_research_slides.tex` with XeLaTeX. On Overleaf, set the compiler to XeLaTeX. The theme uses the Libertinus fonts. The script `code/llm_expectation_curve.R` draws the figures.
+- `beamer_template/`: Alyssa's beamer slide template, shown with her deck "Using LLMs in research" (September 2026).
+  - Compile `llms_2026_research_slides.tex` with XeLaTeX, twice. On Overleaf, set the compiler to XeLaTeX.
+  - The theme requires the Libertinus fonts. To compile on your own computer, install these fonts first.
+  - The script `code/llm_expectation_curve.R` draws the figures with the R packages ggplot2 and data.table. Run the script from the top folder of this repository.
 - `claude-code-docker-setup/`: scripts that run Claude Code or Codex in a Docker container, with R, Python, Stata, and LaTeX. See "Docker" below.
 
 ## Purpose of CLAUDE.md
@@ -15,46 +18,52 @@ CLAUDE.md is a plain-text (Markdown) file of instructions. Claude Code reads it 
 - set rules for one project, for example the build command, the folder layout, or what to commit;
 - keep general rules that you want in every project, for example "never make up numbers" or "ask before you delete files."
 
-Write down what you would otherwise explain again in each session. When Claude makes the same mistake twice, add a rule. Keep each file short (Anthropic suggests fewer than about 200 lines), and write rules that you could check: "Run the tests before you commit," instead of "Test your changes."
+Write down the explanations that you repeat in each session. Update the file as you go. When Claude makes an error, add a rule. Keep each file short. Anthropic suggests fewer than 200 lines per file. Write rules that you can check, for example "Run the tests before you commit," instead of "Test your changes."
 
 ## CLAUDE.md locations
 
-Table 1. Locations of CLAUDE.md files, from the broadest scope to the narrowest. Claude Code reads every file that applies and combines them; it reads the files closest to your working folder last. Files in the folders above the folder where you start Claude load at the start of the session. Files in subfolders load when Claude reads or edits a file in that subfolder. Source: Anthropic, "How Claude remembers your project."
+Your "working folder" is the folder where you start Claude Code. At the start of a session, Claude Code reads the CLAUDE.md files in your working folder and in the folders above it. Claude Code reads a file in a subfolder when Claude reads or edits a file in that subfolder. Claude Code combines all the files that apply, and it reads the files closest to your working folder last.
 
-| Scope | Location | Use for | Who gets it |
+Table 1. Locations of CLAUDE.md files, from the broadest scope to the narrowest. For example, the first row shows that the rules in `~/.claude/CLAUDE.md` apply only to you, in every project on your computer. Sources: Anthropic, "How Claude remembers your project" and "Configure cloud environments."
+
+| Scope | Location | Use for | Applies to |
 |---|---|---|---|
-| Your rules, every project | `~/.claude/CLAUDE.md` | General rules that you like | Only you, in all projects |
-| Project rules | `CLAUDE.md` or `.claude/CLAUDE.md` in the project folder | Project description and project rules | Everyone who uses the repository |
-| Your notes on one project | `CLAUDE.local.md` in the project folder (add it to `.gitignore`) | Personal settings for one project | Only you, in that project |
+| Your rules, every project | `~/.claude/CLAUDE.md` on your computer | General rules that you like | Only you, in every project on your computer; cloud sessions do not read this file |
+| Project rules | `CLAUDE.md` or `.claude/CLAUDE.md` in the project folder | Project description and project rules | Everyone who uses the repository, also in cloud sessions |
+| Your notes on one project | `CLAUDE.local.md` in the project folder (add it to `.gitignore`) | Personal instructions for one project | Only you, in that project on your computer; cloud sessions do not have this file |
 | Subfolder rules | `CLAUDE.md` in a subfolder | Rules for one part of a project | Everyone who uses the repository |
 
-Organizations can also set one policy file for all of their users. Three commands help:
+Organizations can also set one policy file for all of their users.
+
+You can manage CLAUDE.md files with two commands and one kind of line:
 
 - `/init` writes a starting CLAUDE.md for a project.
 - `/memory` opens your CLAUDE.md files so that you can edit them.
 - A line such as `@docs/setup.md` in a CLAUDE.md file imports another file.
 
-## Using the template
+## Template setup
 
-1. Copy `CLAUDE_template.md` to `~/.claude/CLAUDE.md` for rules in every project, or to `CLAUDE.md` in a repository for one project.
-2. Fill in the items in [brackets].
-3. Delete the rules that you do not want, and add your own.
+1. Copy `CLAUDE_template.md` to `CLAUDE.md` in a repository, for rules in one project. Cloud sessions read this file.
+2. Or copy `CLAUDE_template.md` to `~/.claude/CLAUDE.md` on your computer, for rules in every project on that computer. Cloud sessions do not read this file.
+3. Fill in the items in [brackets].
+4. Delete the rules that you do not want. The template has 365 lines, and Anthropic suggests fewer than 200 lines per file.
+5. Add your own rules.
 
-## Starting a project
+## New projects
 
 - **Describe the project:** what it is and what it is for.
 - **Give context:** the documents that will be useful.
-- **Specify the tasks:** what to do, and what "done" looks like.
+- **Specify the tasks:** what to do and what to deliver.
 - **Plan first:** ask for a plan before any changes (plan mode).
 - **Give Claude a way to check its work:** tests or expected outputs.
 
-Source: Anthropic, "Best practices for Claude Code," and Alyssa Bilinski.
+Sources: Anthropic, "Best practices for Claude Code," and Alyssa Bilinski.
 
 ## Model and thinking level
 
 - Choose the model with `/model`, for example `/model opus`.
-- Choose the thinking level with `/effort`, for example `/effort high`. The levels are low, medium, high, xhigh, and max. Opus 5.5 starts at medium.
-- Alyssa's choice: at least Opus 5.5 at high effort, sometimes Fable, and never Sonnet.
+- Choose the thinking level with `/effort`, for example `/effort high`. The levels are low, medium, high, xhigh, and max. The default level for Opus 5.5 is medium.
+- Alyssa's choice: at least Opus 5.5 at the high thinking level, sometimes Fable, and never Sonnet.
 
 ## Docker
 
@@ -69,4 +78,4 @@ The folder [`claude-code-docker-setup/`](claude-code-docker-setup/) contains scr
 - Anthropic. How Claude remembers your project. https://code.claude.com/docs/en/memory
 - Anthropic. Best practices for Claude Code. https://code.claude.com/docs/en/best-practices
 - Anthropic. Model configuration. https://code.claude.com/docs/en/model-config
-- Anthropic. Use Claude Code in the cloud. https://code.claude.com/docs/en/claude-code-on-the-web
+- Anthropic. Configure cloud environments. https://code.claude.com/docs/en/cloud-environments

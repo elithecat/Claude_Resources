@@ -2,7 +2,7 @@
 
 This folder contains scripts that run Claude Code inside a Docker container on your computer. The container has R, Python, Stata, and LaTeX, with common packages for quantitative research. The same scripts can also run Codex, the coding agent from OpenAI.
 
-**Who this guide is for:** researchers who write code in R, Python, or Stata. You can type commands in the Terminal, and Docker may be new to you.
+**Audience:** researchers who write code in R, Python, or Stata. You can type commands in the Terminal, and Docker may be new to you.
 
 **Other documents in this folder:**
 
@@ -14,7 +14,7 @@ For more background on Docker, see Alyssa Bilinski's earlier guide: <https://git
 ## Contents
 
 1. [Overview](#overview)
-2. [Docker and local installs](#docker-and-local-installs)
+2. [Docker and local installations](#docker-and-local-installations)
 3. [Requirements](#requirements)
 4. [One-time setup](#one-time-setup)
 5. [Local folders](#local-folders)
@@ -33,22 +33,24 @@ For more background on Docker, see Alyssa Bilinski's earlier guide: <https://git
 
 ## Overview
 
-Claude Code is an AI assistant that reads, writes, and runs code. Docker runs programs in a "container," a separate Linux system inside your computer. In this setup, Claude Code runs in a container and works on 1 project at a time.
+Claude Code is an AI assistant that reads, writes, and runs code. Docker runs programs in a "container," a separate Linux system inside your computer. Docker creates each container from an "image," a stored template of a Linux system and its programs. In this setup, Claude Code runs in a container and works on one project at a time.
 
-Each session has 4 steps:
+Work in this setup has 4 steps:
 
 1. You start a session with `./go`, and you name a project: a folder on your computer or a GitHub repository.
-2. `./go` copies the folder, or clones the repository, into this setup folder.
-3. Claude works on that copy inside the container.
-4. You review the changes and decide what to keep.
+2. `./go` copies the folder into a "review copy," or clones the repository, inside this setup folder.
+3. Claude works on the review copy or the clone inside the container.
+4. After the session, you review the changes and decide what to keep.
 
-## Docker and local installs
+This setup has 2 modes: the "default mode" for normal sessions, and "audit mode" for code that you do not trust (see [Audit mode](#audit-mode)).
 
-If you install Claude Code on your computer, it runs as your user account. A command that you approve can read and change every file that your account can reach.
+## Docker and local installations
 
-In this setup, Claude Code runs in a container. The container has a copy of 1 project folder, plus the logins that this setup gives it. Figure 1 shows the parts of a session in the default mode.
+If you install Claude Code on your computer, Claude Code runs as your user account. A command that you approve has the same access to your files as your user account.
 
-Figure 1. Parts of a session in the default mode. Arrows show what goes into the container. The proxy container passes Claude's requests to Anthropic and contains your Claude login.
+In this setup, Claude Code runs in a container. The container has a copy of one project folder. In the default mode, the container also has your GitHub login and your Stata license. Figure 1 shows the parts of a session in the default mode.
+
+Figure 1. Parts of a session in the default mode. The outer box is your computer, and the inner box is the Docker container. The top arrow shows that the copy of your project is the folder `/workspace` in the container, with read and write access. The middle arrow shows that the container has read-only access to your GitHub login and Stata license. The bottom arrow shows Claude's requests to the proxy container. The proxy container passes the requests to Anthropic, and it contains your Claude login.
 
 ```
 YOUR COMPUTER
@@ -59,9 +61,9 @@ YOUR COMPUTER
 |  email, passwords):            | Claude Code, R, Python,      |  |
 |  not in the container          | Stata, LaTeX                 |  |
 |                                |                              |  |
-|  Copy of 1 project  -------->  | /workspace (read and write)  |  |
+|  Copy of one project  ------>  | /workspace (read and write)  |  |
 |                                |                              |  |
-|  GitHub login and   -------->  | read only                    |  |
+|  GitHub login and     ------>  | read only                    |  |
 |  Stata license                 +------------------------------+  |
 |                                               |                  |
 |  Proxy container  <---------------------------+                  |
@@ -69,43 +71,47 @@ YOUR COMPUTER
 +------------------------------------------------------------------+
 ```
 
-Table 1. Access by type of installation. "Default mode" is a normal session in this setup. "Audit mode" is for code that you do not trust (see [Audit mode](#audit-mode)). Each cell answers this question: can Claude Code reach the item in that setting?
+Table 1. Access by type of installation. Each cell shows whether Claude Code has access to the item in that type of installation, and how. For example, the first row shows that Claude Code has access to the other files on your computer only in a local installation.
 
-| Item | Local install | This setup, default mode | This setup, audit mode |
+| Item | Local installation | This setup, default mode | This setup, audit mode |
 |---|---|---|---|
 | Other files on your computer | Yes | No | No |
 | Your project folder | The original folder | A copy | A copy |
-| Internet | Yes | Yes | Only the model provider |
+| Internet | Yes | Yes | Only the model provider (Anthropic for Claude, OpenAI for Codex) |
 | GitHub login | Yes, if your computer has one | Yes, read only | No |
 | Stata license | Yes | Yes, read only | No |
-| Your Claude login | Yes | No (the proxy container keeps it) | No (the proxy container keeps it) |
+| Your Claude login | Yes | No (the login is in the proxy container) | No (the login is in the proxy container) |
 
 Other protections in this setup:
 
 - The container runs as a normal user without administrator rights, and its system files are read only.
-- The session gets a temporary token that works only through the proxy container, up to a set number of requests (see [Request budget](#request-budget)).
-- In the default mode, every program in the session can read your GitHub login and Stata license. For this reason, log in with the separate GitHub account from the workshop.
+- Each session has a temporary password for the proxy container, a "session token." The session token works only up to a set number of requests (see [Request limit](#request-limit)).
+- In the default mode, every program in the session has read access to your GitHub login and Stata license. For this reason, log in with the separate GitHub account from the workshop.
 
 ## Requirements
 
-- **Computer:** a Mac or a Linux computer. The scripts are written for macOS and Linux.
+- **Computer:** a Mac or a Linux computer. The scripts run on macOS and Linux.
 - **Docker Desktop:** download it from <https://www.docker.com/products/docker-desktop/>. On Linux, Docker Engine also works.
-- **git, Python 3, and rsync:** the review commands use them on your computer. macOS includes rsync. On a Mac, run `xcode-select --install` to install git and Python 3.
-- **Claude login:** a Claude subscription, or an Anthropic API key.
+- **Programs on your computer:** `./setup.sh` and the review commands run Node.js, Python 3.11 or later, git, and rsync on your computer.
+  - macOS includes rsync.
+  - On a Mac, run `xcode-select --install` to install git.
+  - Install Node.js from <https://nodejs.org/>.
+  - Install Python from <https://www.python.org/downloads/>. To check your version, run `python3 --version`.
+- **Claude account:** a Claude subscription, or an Anthropic API key.
 - **GitHub account:** you need one to work on GitHub repositories. Use the separate account from the workshop.
-- **Stata license file (`stata.lic`):** default sessions do not start without one. Audit mode does not need one.
-- **Codex login (optional):** a ChatGPT subscription or an OpenAI API key.
-- **Time and disk space:** the first build downloads and compiles many packages. It takes a long time and needs space for a large Docker image.
+- **Stata license file (`stata.lic`):** sessions in the default mode do not start without one. Audit mode does not need one.
+- **Codex account (optional):** a ChatGPT subscription or an OpenAI API key.
+- **Time and disk space:** the first build downloads and compiles many packages. The first build takes a long time and needs space for a large Docker image.
 
 ## One-time setup
 
-### Step 1. Install Docker Desktop
+### Step 1. Docker Desktop
 
-Install Docker Desktop from <https://www.docker.com/products/docker-desktop/>. Open Docker Desktop. Leave it running while you use this setup.
+Install Docker Desktop from <https://www.docker.com/products/docker-desktop/>. Open Docker Desktop. Leave Docker Desktop open while you use this setup.
 
-### Step 2. Download this folder
+### Step 2. Folder download
 
-On the [Claude_Resources page](https://github.com/elithecat/Claude_Resources), select **Code**, then **Download ZIP**. Unzip the file. Move the folder `claude-code-docker-setup` to a permanent place, for example your `Documents` folder.
+On the [Claude_Resources page](https://github.com/elithecat/Claude_Resources), select **Code**. Then select **Download ZIP**. Unzip the file. Move the folder `claude-code-docker-setup` to a permanent place, for example your `Documents` folder.
 
 If you use git, you can clone the repository instead:
 
@@ -113,9 +119,9 @@ If you use git, you can clone the repository instead:
 git clone https://github.com/elithecat/Claude_Resources.git
 ```
 
-Keep your projects outside this folder. `./go` stops with an error for a project inside it.
+Keep your projects outside this folder. `./go` stops with an error for a project inside this folder.
 
-### Step 3. Open the folder in the Terminal
+### Step 3. Terminal
 
 ```bash
 cd ~/Documents/claude-code-docker-setup
@@ -123,56 +129,61 @@ cd ~/Documents/claude-code-docker-setup
 
 Run every command in this guide from this folder.
 
-### Step 4. Build the images
+### Step 4. Docker images
 
 ```bash
 ./setup.sh
 ```
 
-**What this command does:**
+**Steps of `./setup.sh`:**
 
-- It creates `config.env`, the settings file, from `config.env.example` (see [Settings](#settings)).
-- It creates private folders: `auth/` for logins and the Stata license, `state/` for package caches and saved chats, `pending/` for review copies, and `scratch/` and `worktrees/` for clones.
-- It runs quick checks of the scripts.
-- It builds 2 Docker images. The image `agents-research` contains Claude Code, Codex, R, Python, Stata, and LaTeX. The image `agents-research-proxy` is for the proxy container.
+- The script creates `config.env`, the settings file, from `config.env.example` (see [Settings](#settings)).
+- The script creates 5 private folders:
+  - `auth/` for logins and the Stata license
+  - `state/` for package caches and saved conversations
+  - `pending/` for review copies of local folders
+  - `scratch/` for clones of GitHub repositories
+  - `worktrees/` for clones during download
+- The script runs quick checks of the scripts on your computer. These checks need Node.js and Python 3.11 or later.
+- The script builds 2 Docker images. The image `agents-research` contains Claude Code, Codex, R, Python, Stata, and LaTeX. The image `agents-research-proxy` is for the proxy container.
 
-The first build takes a long time, because R packages compile from source. Later builds are faster, because Docker reuses the parts that did not change.
+The first build takes a long time, because R packages compile from source. Later builds are faster, because Docker rebuilds only the parts that changed.
 
 If the Terminal shows `permission denied`, run `bash setup.sh`. The setup script makes the other scripts executable.
 
-### Step 5. Log in to Claude
+### Step 5. Claude login
 
 ```bash
 ./authenticate-claude.sh setup-token
 ```
 
-**What happens:**
+**Login steps:**
 
 1. The script runs the Claude command `claude setup-token` in a container with no other logins.
 2. The command prints a link. Open the link in your browser.
-3. Sign in to your Claude account. Approve access.
-4. The command prints a token. Copy the token.
-5. When the command ends, paste the token at the prompt. The prompt does not display what you paste.
-6. The script saves the token in `auth/secrets/`. Only your user account can read it.
+3. Log in to your Claude account. Approve access.
+4. The command prints a login token. Copy the login token.
+5. When the command ends, paste the login token at the prompt. The prompt does not display what you paste.
+6. The script saves the login token in `auth/secrets/`. Only your user account has read access to the saved token.
 
-The token lasts 1 year, and it requires a Claude subscription. To check the login, run `./authenticate-claude.sh status`. To use an Anthropic API key instead, run `./authenticate-claude.sh api-key`. API use is billed separately from a subscription.
+The login token is valid for one year. You need a Claude subscription to get one. To check the login, run `./authenticate-claude.sh status`. To use an Anthropic API key instead, run `./authenticate-claude.sh api-key`. Anthropic bills API use separately from a subscription.
 
-### Step 6. Log in to GitHub
+### Step 6. GitHub login
 
 ```bash
 ./authenticate-github.sh login
 ```
 
-**What happens:**
+**Login steps:**
 
 1. The script runs the GitHub command-line tool, `gh`, in a container.
-2. The tool prints a one-time code and a web address. Open the address in your browser.
+2. The tool prints a one-time code and a link. Open the link in your browser.
 3. Enter the code. Approve access for your GitHub account.
 4. The script saves the login in `auth/gh/`.
 
-Log in with the separate GitHub account from the workshop. Every default session can read this login. To check the login, run `./authenticate-github.sh status`.
+Log in with the separate GitHub account from the workshop. Every session in the default mode has read access to this login. To check the login, run `./authenticate-github.sh status`.
 
-### Step 7. Add your Stata license
+### Step 7. Stata license
 
 ```bash
 ./copy-stata-license.sh
@@ -186,15 +197,15 @@ This command copies `/Applications/Stata/stata.lic` to `auth/STATA.LIC`. If your
 
 If you have a Stata serial number but no license file, run `./setup-stata-license.sh`. That script runs the Stata activation program inside the container. If activation needs the internet, add `--allow-network`.
 
-### Step 8 (optional). Log in to Codex
+### Step 8 (optional). Codex login
 
 ```bash
 ./authenticate-codex.sh chatgpt
 ```
 
-This command signs in with a ChatGPT subscription. Codex prints a link and a one-time code. To use an OpenAI API key instead, run `./authenticate-codex.sh api-key`.
+Use this command to log in to Codex with a ChatGPT subscription. Codex prints a link and a one-time code. To use an OpenAI API key instead, run `./authenticate-codex.sh api-key`.
 
-### Step 9. Test the setup
+### Step 9. Setup test
 
 ```bash
 ./tests/agent-smoke.sh
@@ -207,13 +218,13 @@ After setup, the folder contains these items:
 ```
 claude-code-docker-setup/
 ├── auth/          your logins and the Stata license (private)
-├── state/         package caches and saved chats
+├── state/         package caches and saved conversations
 ├── pending/       review copies of local folders
 ├── scratch/       clones of GitHub repositories
 ├── worktrees/     clones during download
 ├── config.env     your settings
 ├── go             starts a session
-├── review         lists, shows, accepts, or rejects review copies
+├── review         lists, shows, applies, or deletes review copies
 └── other scripts and files (see "Files in this folder")
 ```
 
@@ -223,18 +234,18 @@ claude-code-docker-setup/
 ./go claude ~/Documents/repos/MyProject
 ```
 
-Figure 2. A session on a local folder. Changes reach your folder only when you accept them.
+Figure 2. A session on a local folder. The arrows show the order of the steps, from left to right. During the session, Claude works on the review copy in `pending/`. Your folder changes only when you accept the review copy.
 
 ```
 Your folder                  Review copy                      Your folder
 ~/Documents/repos/      -->  pending/MyProject-<date-time> -->  changes only if
-MyProject                    (Claude works here)              you accept them
-(no change during the
+MyProject                    (Claude works here)              you accept the
+(no change during the                                         review copy
 session)
 ```
 
-1. `./go` copies your folder into `pending/`, in a new folder that has the date and time in its name. `./go` also records a fingerprint (a SHA-256 hash) of every file.
-2. Claude works on the copy. Your folder does not change.
+1. `./go` copies your folder into `pending/`, in a new folder that has the date and time in its name. `./go` also records a checksum (a SHA-256 hash) of every file.
+2. Claude works on the review copy. Your folder does not change.
 3. To end the session, type `/exit`.
 4. List the review copies:
 
@@ -244,7 +255,7 @@ session)
 
    Each entry shows the original folder and the numbers of new, removed, and modified files.
 
-5. See every change in 1 copy:
+5. See every change in a review copy:
 
    ```bash
    ./review MyProject-<date-time> diff
@@ -256,9 +267,9 @@ session)
    ./review MyProject-<date-time> accept
    ```
 
-   Type `yes` to confirm. Your folder then matches the copy exactly, including files that Claude deleted.
+   Type `yes` to confirm. Your folder then matches the review copy exactly, including files that Claude deleted.
 
-7. Or delete the copy and keep your folder as it is:
+7. To discard the changes, delete the review copy:
 
    ```bash
    ./review MyProject-<date-time> reject
@@ -266,11 +277,11 @@ session)
 
 **Checks during accept:**
 
-- If your folder changed after `./go` made the copy, `accept` stops. Look at the changes, then run `./review MyProject-<date-time> accept --force`.
-- If a session still runs on the copy, `accept` stops.
-- After the copy step, `accept` compares every file in your folder with the copy. If any file differs, `accept` keeps the copy for you to inspect.
+- If your folder changed after `./go` made the review copy, `accept` stops. Look at the changes. Then run `./review MyProject-<date-time> accept --force`.
+- If a session still runs on the review copy, `accept` stops.
+- After `accept` writes the review copy into your folder, `accept` compares every file in your folder with the review copy. If any file differs, `accept` does not delete the review copy, so that you can inspect it.
 
-`./review accept-all` accepts every review copy, oldest first. The largest folder that `./go` copies is 4,096 MB (`MAX_WORKSPACE_MB` in [Settings](#settings)).
+To accept every review copy, oldest first, run `./review accept-all`. The largest folder that `./go` copies is 4,096 MB (`MAX_WORKSPACE_MB` in [Settings](#settings)).
 
 ## GitHub repositories
 
@@ -278,7 +289,7 @@ session)
 ./go claude https://github.com/you/Repo "Create and switch to a branch named session/2026-10-21-tables. Make the tables. Push the branch."
 ```
 
-Figure 3. A session on a GitHub repository. Your computer has no copy of the work until you pull it from GitHub.
+Figure 3. A session on a GitHub repository. The arrows show the order of the steps, from left to right. `./go` clones the repository into `scratch/`, and Claude works and commits in that clone. Claude then pushes a new branch to GitHub for you to review and merge. Your computer has no copy of the work until you pull it from GitHub.
 
 ```
 GitHub repository  -->  scratch/Repo-<date-time>  -->  GitHub
@@ -286,12 +297,12 @@ GitHub repository  -->  scratch/Repo-<date-time>  -->  GitHub
                         here, then pushes)             you to review and merge)
 ```
 
-1. `./go` clones the repository into `scratch/` with your GitHub login. `./go` accepts only addresses that start with `https://github.com/`.
+1. `./go` clones the repository into `scratch/` with your GitHub login. The repository address must start with `https://github.com/`.
 2. Claude works in the clone. Claude can commit and push with your GitHub login.
-3. When the session ends, `./go` deletes the clone if all its work is on GitHub. If the clone has uncommitted changes or commits that were not pushed, `./go` keeps the clone and prints the reason.
+3. When the session ends, `./go` deletes the clone if GitHub has all the work from the clone. If the clone has uncommitted changes or commits that are not on GitHub, `./go` prints the reason and does not delete the clone.
 4. Review the branch on GitHub. To keep the work, merge the branch with a pull request.
 
-To keep every clone, add `--keep` after `./go`. To delete kept clones, run `./clean`, then type `yes` to confirm.
+To keep every clone, add `--keep` after `./go`. To delete kept clones, run `./clean`. Type `yes` to confirm.
 
 To start from a specific branch, add its name after the task:
 
@@ -299,9 +310,9 @@ To start from a specific branch, add its name after the task:
 ./go claude https://github.com/you/Repo "task" my-branch
 ```
 
-**Branches.** Run each session on its own branch. Start each task with this text, or put the text in the repository's `CLAUDE.md`: "Create and switch to a branch named session/<date>-<topic>. Commit as you go. Push the branch before finishing. Never push main."
+**Branches.** Run each session on its own branch. Start each task with this text. Or put the text in the repository's `CLAUDE.md`: "Create and switch to a branch named session/<date>-<topic>. Commit as you go. Push the branch before finishing. Never push main."
 
-If GitHub rejects a push because the branch changed on GitHub, do not force the push. End the session. Start a new session, which clones the current version, and repeat the task.
+If a push fails because the branch changed on GitHub, do not force the push. End the session. Start a new session, which clones the current version. Repeat the task in that session.
 
 ## Conversations and one-task runs
 
@@ -311,51 +322,55 @@ In the commands below, `<project>` is a folder path or a GitHub address.
 - **Conversation with a first task:** `./go claude <project> "task"` sends the task first. You can then continue the conversation.
 - **One-task run:** `./go --once claude <project> "task"` runs the task and exits without stopping for input. A one-task run needs a task.
 
-**No permission prompts.** In every mode, Claude edits files and runs commands without asking first. Claude works on a copy inside the container, and changes reach your files only when you accept them. Give specific instructions, and review every change before you accept it.
+**No permission prompts.** In both modes, Claude edits files and runs commands without asking first. Claude works on a review copy or a clone inside the container. Your files change only when you accept a review copy. Give specific instructions. Review every change before you accept it.
 
-**Model.** `config.env` sets the model for Claude sessions (`CLAUDE_MODEL=opus`). To switch models during a session, type `/model`.
+**Model.** You choose the model for Claude sessions with `CLAUDE_MODEL` in `config.env` (`opus` in the example file). To switch models during a session, type `/model`.
 
-**Instructions.** Claude reads the project's `CLAUDE.md` as usual. Claude also receives the notes in `AGENTS.md` from this setup folder, which describe the container. Claude does not use the project's `.claude/settings.json`. MCP servers and connectors are off. Web search is on in the default mode.
+**Instructions.** Claude reads the project's `CLAUDE.md` as usual. Claude also receives the notes in `AGENTS.md` from this setup folder, which describe the container. Claude does not use the project's `.claude/settings.json`.
 
-**Saved chats.** By default, a chat ends with its session, and `/resume` cannot find it later. To keep a chat, start the session with `--remember`:
+**Connectors and web search.** Connectors and MCP (Model Context Protocol) servers connect Claude to outside services, such as Gmail. In this setup, both are off. Web search is on in the default mode.
+
+**Saved conversations.** By default, a conversation ends with its session, and you cannot resume it later. To keep a conversation, start the session with `--remember`:
 
 ```bash
 ./go --remember claude ~/Documents/repos/MyProject
 ```
 
-To continue the chat later, start again with `--remember` on the same project, and type `/resume`. Check `git log` first, because the files may differ from what the chat describes.
+To continue the conversation later, start a new session with `--remember` on the same project. Then type `/resume`. Check `git log` first, because the files may differ from what the conversation describes.
 
 ## Several sessions at once
 
 Each `./go` starts its own container. Run each session in its own Terminal window.
 
-- Each session on a local folder gets its own review copy.
-- Each session on a GitHub repository gets its own clone. Give each session its own branch.
+- Each session on a local folder has its own review copy.
+- Each session on a GitHub repository has its own clone. Give each session its own branch.
 - If sessions publish ports, give each session a different `-p` number (see [Web apps and notebooks](#web-apps-and-notebooks)).
-- Each session has its own request budget.
+- Each session has its own request limit.
 
 ## Session management
 
 - **End a session:** type `/exit` in Claude Code.
 - **List running sessions:** run `./ps`.
-- **Open a shell in a running session:** run `./enter-running.sh`. If more than 1 session runs, add the container name from `./ps`, for example `./enter-running.sh <name>`.
+- **Open a shell (a command line) in a running session:** run `./enter-running.sh`. If more than one session runs, add the container name from `./ps`, for example `./enter-running.sh <name>`.
 - **Stop a session from outside:** run `docker stop <name>`.
 - **See the output of a one-task run while it runs:** run `docker logs <name>`.
-- **Open a shell without Claude:** run `./shell.sh <folder>`. This shell works on your folder directly, not on a copy. Options such as `--trusted --allow-network --with-stata --github-creds` add internet access, Stata, and your GitHub login. Run `./shell.sh --help` for details.
+- **Open a shell without Claude:** run `./shell.sh <folder>`. This shell works on your original folder, and `./shell.sh` makes no review copy. Options such as `--trusted --allow-network --with-stata --github-creds` add internet access, Stata, and your GitHub login. Run `./shell.sh --help` for details.
 
 ## Web apps and notebooks
 
-By default, a session publishes no ports, and your browser cannot reach a web app inside the container. To view an app, add `-p 0`:
+A "port" is the number after the colon in an address such as `localhost:3000`. By default, a session publishes no ports, and your browser cannot reach a web app inside the container. To view an app, add `-p 0`:
 
 ```bash
 ./go -p 0 claude ~/Documents/repos/MyApp
 ```
 
 - `-p 0` connects ports 3000, 5173, 8080, and 8888 on your computer to the same ports in the container.
-- `-p 1` uses ports 3001, 5174, 8081, and 8889 on your computer, and so on.
-- Only your own computer can open these ports.
+- `-p 1` connects ports 3001, 5174, 8081, and 8889 on your computer to ports 3000, 5173, 8080, and 8888 in the container, and so on.
+- Only programs on your own computer can connect to these ports.
 
-Inside the container, the app must listen on address `0.0.0.0` and on port 3000, 5173, 8080, or 8888. For a Shiny app, ask Claude to start the app with `shiny::runApp(port = 3000, host = "0.0.0.0")`. Then open <http://localhost:3000>. The image does not include the shiny package, and Claude can install it during the session. Use port 8888 for Jupyter.
+Inside the container, the app must listen on IP address `0.0.0.0` and on port 3000, 5173, 8080, or 8888. Use port 8888 for Jupyter.
+
+For a Shiny app, ask Claude to start the app with `shiny::runApp(port = 3000, host = "0.0.0.0")`. Then open <http://localhost:3000>. The image does not include the shiny package, and Claude can install it during the session.
 
 ## Audit mode
 
@@ -370,15 +385,15 @@ In audit mode:
 - The session has no GitHub login and no Stata license.
 - The session can reach only the model provider.
 - Claude cannot use web search, web pages, or MCP servers.
-- `./go` copies the folder, or clones the repository, into `scratch/`. Nothing is written to your files, and audit mode has no accept step.
+- `./go` copies the folder, or clones the repository, into `scratch/`. Your files do not change, and audit mode has no accept step.
 
-Read the findings in `scratch/`, then delete the copy with `./clean`. Audit mode with Codex needs an OpenAI API key.
+Read the findings in `scratch/`. Then delete the folder in `scratch/` with `./clean`. Audit mode with Codex needs an OpenAI API key.
 
 ## Settings
 
 `./setup.sh` creates `config.env` from `config.env.example`. Edit `config.env` in a text editor. Most changes apply to the next session. Version changes apply after you rebuild the images (see [Updates](#updates)).
 
-Table 2. Main settings in `config.env`. The middle column gives the value in `config.env.example`. "Conversation session" means a session without `--once`.
+Table 2. Main settings in `config.env`. The middle column gives the value in `config.env.example`. "Conversation session" means a session without `--once`. For example, `MEMORY_LIMIT=16g` limits each session to 16 GB of memory.
 
 | Setting | Value in the example file | Meaning |
 |---|---|---|
@@ -392,21 +407,21 @@ Table 2. Main settings in `config.env`. The middle column gives the value in `co
 | `CLAUDE_VERSION` and `CODEX_VERSION` | `2.1.281` and `0.156.1` | Versions of Claude Code and Codex in the image |
 | `STATA_EDITION` | `se` | Stata edition in the image |
 
-### Request budget
+### Request limit
 
-Each session can send a limited number of requests to the model provider. Each tool call and each file read counts as a request. When a session reaches the limit, Claude shows this error:
+Each session can send a limited number of requests to the model provider. Each tool call and each file read counts as a request. When a session reaches its request limit, Claude shows this error:
 
 ```
 429 per-run provider request limit reached
 ```
 
-Your files are safe, because everything that the agent wrote is already in `pending/` or `scratch/`. To continue the session, run this command in another Terminal window:
+Your files are safe, because all of Claude's work is already in `pending/` or `scratch/`. To continue the session, run this command in another Terminal window:
 
 ```bash
 ./bump-proxy-limit.sh 50000
 ```
 
-The agent reconnects on its next attempt. To raise the limit for later sessions, change `PROXY_MAX_REQUESTS_INTERACTIVE` in `config.env`.
+Claude reconnects on its next attempt. To raise the request limit for later sessions, change `PROXY_MAX_REQUESTS_INTERACTIVE` in `config.env`.
 
 ## Updates
 
@@ -420,14 +435,14 @@ The script writes the new versions in `config.env` and rebuilds the images. To u
 
 ## Installed software
 
-Table 3. Software in the container, by category. The versions of Python, Stata, and Node.js are fixed in the `Dockerfile`.
+Table 3. Software in the container, by category. The `Dockerfile` lists exact versions of Python, Stata, and Node.js. For example, the first row shows that the container has Python 3.12.
 
 | Category | Software |
 |---|---|
 | Languages | Python 3.12, R, Stata 19 (SE edition), Node.js 24, Ruby |
 | Python packages | numpy, pandas, matplotlib, seaborn, scipy, statsmodels, scikit-learn, requests, jupyter, jupyterlab, jupytext, papermill, ipywidgets, nbstata (Stata in Jupyter) |
 | R packages for data | tidyverse, data.table, haven, readxl, openxlsx, janitor, lubridate, here, fs, jsonlite, glue, httr2 |
-| R packages for econometrics | fixest, did, lfe, estimatr, sandwich, clubSandwich, plm, AER, ivreg, rdrobust, DRDID, gsynth, Synth, synthdid (installed from GitHub when that step succeeds) |
+| R packages for econometrics | fixest, did, lfe, estimatr, sandwich, clubSandwich, plm, AER, ivreg, rdrobust, DRDID, gsynth, Synth, synthdid (installed from GitHub during the image build, if that installation succeeds) |
 | R packages for models | lme4, survival, caret, randomForest, MASS, Matrix, broom, car |
 | R packages for tables and reports | modelsummary, stargazer, kableExtra, knitr, rmarkdown, tinytex |
 | R packages for graphs | patchwork, cowplot, ggrepel, ggthemes, viridis, scales, gridExtra |
@@ -435,39 +450,41 @@ Table 3. Software in the container, by category. The versions of Python, Stata, 
 | Documents | LaTeX (with XeLaTeX and latexmk), pandoc, Jekyll |
 | Tools | git, GitHub command-line tool (`gh`), ripgrep, jq, Claude Code, Codex |
 
-Packages that Claude installs during a session go into a cache for that project, in `state/cache/`. Later sessions on the same project can use them. Audit mode does not use the cache. To add a package to the image for every project, edit `Dockerfile` or `requirements-python.txt`, then run `./setup.sh`.
+During a session, Claude installs packages into a cache for that project, in `state/cache/`. Claude can use these packages in later sessions on the same project. Sessions in audit mode have no package cache. To add a package to the image for every project, edit `Dockerfile` or `requirements-python.txt`. Then run `./setup.sh`.
 
 ## Troubleshooting
 
-Table 4. Common messages, their causes, and fixes. The message column shows the part of each message that the Terminal prints.
+Table 4. Common messages, their causes, and fixes. The message column shows the part of each message that the Terminal prints. For example, if the Terminal prints `permission denied`, run `bash setup.sh` once.
 
 | Message | Cause | Fix |
 |---|---|---|
-| `permission denied` | The script is not marked as executable | Run `bash setup.sh` once |
-| `Cannot connect to the Docker daemon` | Docker Desktop is not running | Open Docker Desktop |
+| `permission denied` | The script is not executable | Run `bash setup.sh` once |
+| `node: command not found` | Node.js is not on your computer | Install Node.js (see [Requirements](#requirements)) |
+| `No module named 'tomllib'` | Your Python version is older than 3.11 | Install Python 3.11 or later (see [Requirements](#requirements)) |
+| `Cannot connect to the Docker daemon` | Docker Desktop is not open | Open Docker Desktop |
 | `Stata license is not configured` | `auth/STATA.LIC` is missing | Run `./copy-stata-license.sh` (Step 7) |
-| `no Claude credential` | No Claude login is stored | Run `./authenticate-claude.sh setup-token` (Step 5) |
-| `GitHub authentication is missing` | No GitHub login is stored | Run `./authenticate-github.sh login` (Step 6) |
-| `no Codex login` | No Codex login is stored | Run `./authenticate-codex.sh chatgpt` (Step 8) |
-| `429 per-run provider request limit reached` | The session used its request budget | Run `./bump-proxy-limit.sh 50000` (see [Request budget](#request-budget)) |
-| `over the 4096 MiB limit` | The folder is larger than the copy limit | Raise `MAX_WORKSPACE_MB`, or move large files out of the folder |
+| `no Claude credential` | `auth/` contains no Claude login | Run `./authenticate-claude.sh setup-token` (Step 5) |
+| `GitHub authentication is missing` | `auth/` contains no GitHub login | Run `./authenticate-github.sh login` (Step 6) |
+| `no Codex login` | `auth/` contains no Codex login | Run `./authenticate-codex.sh chatgpt` (Step 8) |
+| `429 per-run provider request limit reached` | The session reached its request limit | Run `./bump-proxy-limit.sh 50000` (see [Request limit](#request-limit)) |
+| `over the 4096 MiB limit` | The folder is larger than the size limit in `MAX_WORKSPACE_MB` | Raise `MAX_WORKSPACE_MB`, or move large files out of the folder |
 | `refusing to run on the agents package directory` | The project is inside this setup folder | Move the project out of this folder |
-| `port is already allocated` | Another session uses that port | Use a different `-p` number, or stop the other session |
-| `The original changed after this copy was made` | Your folder changed during the session | Check the diff, then run `./review <copy> accept --force` |
-| `an agent session is still running on this copy` | The session on the copy has not ended | End the session, then accept |
+| `port is already allocated` | Another session already publishes that port | Use a different `-p` number, or stop the other session |
+| `The original changed after this copy was made` | Your folder changed during the session | Check the changes with `./review <copy> diff`. Then run `./review <copy> accept --force` |
+| `an agent session is still running on this copy` | A session still runs on the review copy | End the session. Then run `./review <copy> accept` |
 
 **Cleanup:**
 
-- `./review <copy> reject` deletes 1 review copy.
+- `./review <copy> reject` deletes a review copy.
 - `rm -rf pending/*` deletes every review copy without a review.
 - `./clean` deletes kept clones in `scratch/` after you type `yes`.
-- `rm -rf state/sessions` deletes every saved chat.
-- `rm -rf state/cache/<project>` deletes the package cache of 1 project.
+- `rm -rf state/sessions` deletes every saved conversation.
+- `rm -rf state/cache/<project>` deletes the package cache of that project.
 - `./authenticate-claude.sh logout`, `./authenticate-github.sh logout`, and `./authenticate-codex.sh logout` delete the stored logins.
 
 ## Quick reference
 
-Table 5. Commands for common tasks. Run each command from the `claude-code-docker-setup` folder.
+Table 5. Commands for common tasks. Run each command from the `claude-code-docker-setup` folder. For example, to start a conversation on a local folder, run `./go claude ~/path/to/folder`.
 
 | Task | Command |
 |---|---|
@@ -478,23 +495,23 @@ Table 5. Commands for common tasks. Run each command from the `claude-code-docke
 | Test the setup | `./tests/agent-smoke.sh` |
 | Work on a local folder | `./go claude ~/path/to/folder` |
 | Work on a GitHub repository | `./go claude https://github.com/user/repo "task"` |
-| Run 1 task without a conversation | `./go --once claude <project> "task"` |
-| Keep the chat for `/resume` | `./go --remember claude <project>` |
+| Run a single task without a conversation | `./go --once claude <project> "task"` |
+| Keep the conversation for `/resume` | `./go --remember claude <project>` |
 | View a web app | `./go -p 0 claude <project>` |
 | Audit code that you do not trust | `./go --locked claude <project> "task"` |
 | List review copies | `./review` |
-| See the changes in a copy | `./review <copy> diff` |
-| Accept a copy | `./review <copy> accept` |
-| Reject a copy | `./review <copy> reject` |
+| See the changes in a review copy | `./review <copy> diff` |
+| Accept a review copy | `./review <copy> accept` |
+| Delete a review copy | `./review <copy> reject` |
 | List running sessions | `./ps` |
 | Open a shell in a running session | `./enter-running.sh` |
 | Delete kept clones | `./clean` |
-| Reset or raise the request budget | `./bump-proxy-limit.sh 50000` |
+| Reset or raise the request limit | `./bump-proxy-limit.sh 50000` |
 | Update Claude Code and Codex | `./update.sh <codex-version> <claude-version>` |
 
 ## Files in this folder
 
-Table 6. Files in this folder and their purposes.
+Table 6. Files in this folder and their purposes. For example, `go` is the script that starts a session.
 
 | File | Purpose |
 |---|---|
@@ -503,20 +520,20 @@ Table 6. Files in this folder and their purposes.
 | `SECURITY.md` | Security model and known limits |
 | `setup.sh` | Builds the images |
 | `go` | Starts a session |
-| `review` | Lists, shows, accepts, or rejects review copies |
+| `review` | Lists, shows, applies, or deletes review copies |
 | `clean` | Deletes kept clones in `scratch/` |
 | `ps` | Lists running sessions |
 | `enter-running.sh` | Opens a shell in a running session |
-| `shell.sh` | Opens a shell in the image without an agent |
+| `shell.sh` | Opens a shell in a new container, without an agent |
 | `authenticate-claude.sh`, `authenticate-github.sh`, `authenticate-codex.sh` | Store logins |
 | `copy-stata-license.sh`, `setup-stata-license.sh` | Store the Stata license |
-| `bump-proxy-limit.sh` | Resets or raises the request budget of a running session |
+| `bump-proxy-limit.sh` | Resets or raises the request limit of a running session |
 | `update.sh` | Changes the versions of Claude Code and Codex, then rebuilds |
 | `config.env.example` | Default settings |
 | `Dockerfile`, `requirements-python.txt` | Contents of the images |
 | `AGENTS.md`, `AGENTS-locked.md` | Notes for the agent about the container, in the default mode and in audit mode |
 | `managed-default.json`, `managed-locked.json` | Claude Code settings for the default mode and for audit mode |
 | `credential-proxy.mjs`, `codex-egress-proxy.mjs` | Programs in the proxy container |
-| `clone-private.sh`, `github-helper.sh`, `stata-license-helper.sh`, `container-entrypoint.sh`, `codex-system-config.toml`, `python-stack-smoke.py` | Helpers that the other scripts use |
-| `lib/common.sh` | Functions that the scripts share |
+| `clone-private.sh`, `github-helper.sh`, `stata-license-helper.sh`, `container-entrypoint.sh`, `codex-system-config.toml`, `python-stack-smoke.py` | Helper files for the other scripts |
+| `lib/common.sh` | Shared functions for the scripts |
 | `tests/` | Checks of the scripts and of a finished setup |
