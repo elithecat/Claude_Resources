@@ -4,7 +4,7 @@ This folder, the "setup folder," contains scripts that run Claude Code inside a 
 
 **Audience:** researchers who write code in R, Python, or Stata. You can type commands in the Terminal, and Docker may be new to you.
 
-**Other documents in the setup folder:**
+**Other documents:**
 
 - [QUICKSTART.md](QUICKSTART.md): the commands alone, for readers who already use Docker.
 - [SECURITY.md](SECURITY.md): the full security model and its known weaknesses.
@@ -29,7 +29,7 @@ For more background on Docker, see Alyssa Bilinski's earlier guide: <https://git
 14. [Installed software](#installed-software)
 15. [Troubleshooting](#troubleshooting)
 16. [Quick reference](#quick-reference)
-17. [Files in the setup folder](#files-in-the-setup-folder)
+17. [Setup folder files](#setup-folder-files)
 
 ## Overview
 
@@ -85,9 +85,11 @@ Table 1. Access by type of installation. Each cell shows whether Claude Code has
 Other protections in this setup:
 
 - The container runs as a normal user without administrator rights, and its system files are read only.
-- Each session has a temporary password for the proxy container, a "session token." The session token works only up to a set number of requests (see [Request limit](#request-limit)).
+- Each Claude session has a temporary password for the proxy container, a "session token." The session token works only up to a set number of requests (see [Request limit](#request-limit)).
 
 In the default mode, every program in the session has read access to your GitHub login and Stata license. For this reason, log in with a separate GitHub account that has nothing personal in it.
+
+Codex sessions in the default mode have no proxy container, no session token, and no request limit. In these sessions, your ChatGPT login is in the container, and every program has read and write access to the login.
 
 ## Requirements
 
@@ -216,7 +218,9 @@ Use this command to log in to Codex with a ChatGPT subscription. Codex prints a 
 ./tests/agent-smoke.sh
 ```
 
-The test starts each agent in audit mode on a small test folder. Each agent must list the files in that folder. For Claude Code, the output must include `PASS`. For Codex, the output shows `SKIP` unless you saved an OpenAI API key. After the test, `scratch/` has a copy of the test folder for each agent that the test started. To delete these copies, run `./clean`.
+The test starts each agent in audit mode on a small test folder. Each agent must list the files in that folder. For Claude Code, the output must include `PASS`. For Codex, the output shows `SKIP` unless you saved an OpenAI API key.
+
+After the test, `scratch/` has a copy of the test folder for each agent that the test started. To delete every folder in `scratch/`, including these copies, run `./clean`. Type `yes` to confirm.
 
 After setup, the setup folder contains these items:
 
@@ -230,7 +234,7 @@ claude-code-docker-setup/
 ├── config.env     your settings
 ├── go             starts a session
 ├── review         commands to list, see, accept, or reject review copies
-└── other scripts and files (see "Files in the setup folder")
+└── other scripts and files (see "Setup folder files")
 ```
 
 ## Local folders
@@ -286,10 +290,10 @@ session)
 
 - If your folder changed after `./go` made the review copy, `accept` stops. With `--force`, `accept` overwrites those changes in your folder. Copy the changed files that you want to keep to another folder. Then run `./review MyProject-<date-time> accept --force`.
 - If a session still runs on the review copy, `accept` stops.
-- If the review copy contains another git repository, such as a git submodule, `accept` stops. `./review MyProject-<date-time> diff` does not show the changes inside that repository. Inspect that repository yourself before you use `--force`.
+- If the review copy contains a git repository in a subfolder, such as a git submodule, `accept` stops. `./review MyProject-<date-time> diff` does not show the changes inside that repository. Inspect that repository yourself before you use `--force`. With `--force`, `accept` also overwrites any changes that you made in your folder after `./go` made the review copy.
 - After `accept` writes the review copy into your folder, `accept` compares every file in your folder with the review copy. If any file differs, `accept` does not delete the review copy, so that you can inspect it.
 
-To accept every review copy, oldest first, run `./review accept-all`. Type `yes` to confirm. If 2 review copies come from the same folder, `accept-all` accepts the older copy first. If the older copy has changes, `accept-all` does not accept the newer copy, and the newer copy stays in `pending/`.
+To accept every review copy, run `./review accept-all`. Type `yes` to confirm. If 2 review copies come from the same folder, `accept-all` runs `accept` on the older copy first. If the older copy has changes, `accept` then stops for the newer copy, because your folder changed after `./go` made the newer copy. The newer copy stays in `pending/`.
 
 ## GitHub repositories
 
@@ -310,7 +314,7 @@ GitHub repository  -->  scratch/Repo-<date-time>  -->  GitHub
 3. When the session ends, `./go` deletes the clone if GitHub has all the work from the clone. If the clone has uncommitted changes or commits that are not on GitHub, `./go` prints the reason and does not delete the clone.
 4. Review the branch on GitHub. To keep the work, merge the branch with a pull request.
 
-To keep the clone also when GitHub has all its work, add `--keep` after `./go`. To delete every folder in `scratch/`, run `./clean`. Type `yes` to confirm. `./clean` also deletes clones with work that is not on GitHub. To delete one folder, add its name: `./clean <name>`.
+To keep the clone even when GitHub has all the work from the clone, add `--keep` after `./go`. To delete every folder in `scratch/`, run `./clean`. Type `yes` to confirm. `./clean` also deletes clones with work that is not on GitHub. To delete one folder, add its name: `./clean <name>`.
 
 To start from a specific branch, add its name after the task:
 
@@ -336,7 +340,7 @@ Give specific instructions. Review every change before you accept a review copy 
 
 **Model.** You choose the model for Claude sessions with `CLAUDE_MODEL` in `config.env` (`opus` in the example file). To switch models during a session, type `/model`.
 
-**Instructions.** Claude Code receives notes about the container from `AGENTS.md` in the setup folder (`AGENTS-locked.md` in audit mode). In this setup, Claude Code does not load the project's `CLAUDE.md` files, because `./go` starts Claude Code with `--setting-sources user`. Sessions in this setup also do not have your `~/.claude/CLAUDE.md`, and Claude Code does not use the project's `.claude/settings.json`. To give Claude the rules in the project's `CLAUDE.md`, start each task with "Read CLAUDE.md and follow its rules."
+**Instructions.** Claude Code receives notes about the container from `AGENTS.md` in the setup folder (`AGENTS-locked.md` in audit mode). In this setup, Claude Code does not load the project's `CLAUDE.md` files, because `./go` starts Claude Code with `--setting-sources user`. Sessions in this setup also do not have your `~/.claude/CLAUDE.md`, and Claude Code does not use the project's `.claude/settings.json`. To give Claude the rules in the project's `CLAUDE.md`, start each task with "Read CLAUDE.md and follow its rules." In audit mode, do not ask Claude to follow the rules of the project.
 
 **Connectors and web search.** Connectors and MCP (Model Context Protocol) servers connect Claude to outside services, such as Gmail. In this setup, both are off. Web search is on in the default mode.
 
@@ -355,7 +359,7 @@ Each `./go` starts its own container. Run each session in its own Terminal windo
 - Each session on a local folder has its own review copy.
 - Each session on a GitHub repository has its own clone. Give each session its own branch.
 - If you use `-p` in several sessions, give each session a different number (see [Web apps and notebooks](#web-apps-and-notebooks)).
-- Each session has its own request limit.
+- Each Claude session has its own request limit.
 
 ## Session management
 
@@ -364,7 +368,7 @@ Each `./go` starts its own container. Run each session in its own Terminal windo
 - **Open a shell (a command line) in a running session:** run `./enter-running.sh`. If more than one session runs, add the container name from `./ps`, for example `./enter-running.sh <container>`.
 - **Stop a session from outside:** run `docker stop <container>`.
 - **See the output of a one-task run while it runs:** run `docker logs <container>`.
-- **Open a shell without an agent:** run `./shell.sh <folder>`. This shell works on your original folder, and `./shell.sh` makes no review copy. The options `--allow-network`, `--with-stata`, and `--github-creds` add internet access, Stata, and your GitHub login. Each of these options requires `--trusted`. Run `./shell.sh --help` for details.
+- **Open a shell without an agent:** run `./shell.sh <folder>`. This shell works on your original folder, and `./shell.sh` makes no review copy. The options `--allow-network`, `--with-stata`, and `--github-creds` add internet access, the Stata license, and your GitHub login. Each of these options requires `--trusted`, and `--github-creds` also requires `--allow-network`. Run `./shell.sh --help` for details.
 
 ## Web apps and notebooks
 
@@ -398,11 +402,11 @@ In audit mode:
 - `./go` copies the folder, or clones the repository, into `scratch/`. Your files do not change, and audit mode has no accept step.
 - Audit mode with Codex needs an OpenAI API key.
 
-Read the findings in the new folder in `scratch/`. `./go` prints the path of this folder. To delete only this folder, run `./clean <name>` with its name. `./clean` without a name deletes every folder in `scratch/`.
+Read the findings in the new folder in `scratch/`. `./go` prints the path of this folder. To delete only this folder, run `./clean <name>`, where `<name>` is the folder name. Type `yes` to confirm. `./clean` without a name deletes every folder in `scratch/`.
 
 ## Settings
 
-`./setup.sh` creates `config.env` from `config.env.example`. Edit `config.env` in a text editor. Most changes apply to the next session. Changes to the versions or to `STATA_EDITION` apply after you rebuild the images with `./setup.sh`. To change the versions, you can also use `./update.sh` (see [Updates](#updates)).
+`./setup.sh` creates `config.env` from `config.env.example`. Edit `config.env` in a text editor. Most changes apply to the next session. Changes to `CLAUDE_VERSION`, `CODEX_VERSION`, or `STATA_EDITION` apply after you rebuild the images with `./setup.sh`. To change `CLAUDE_VERSION` and `CODEX_VERSION`, you can also run `./update.sh` (see [Updates](#updates)).
 
 Table 2. Main settings in `config.env`. The middle column gives the value in `config.env.example`. "Conversation session" means a session without `--once`. For example, `MEMORY_LIMIT=16g` limits each session to 16 GB of memory.
 
@@ -420,7 +424,7 @@ Table 2. Main settings in `config.env`. The middle column gives the value in `co
 
 ### Request limit
 
-Each session can send a limited number of requests to the model provider. Each tool call and each file read counts as a request. When a session reaches its request limit, Claude shows this error:
+Each Claude session, and each Codex session in audit mode, can send a limited number of requests to the model provider. Each tool call and each file read counts as a request. When a session reaches its request limit, Claude shows this error:
 
 ```
 429 per-run provider request limit reached
@@ -432,9 +436,9 @@ Your files are safe, because all of Claude's work is already in `pending/` or `s
 ./bump-proxy-limit.sh 50000
 ```
 
-Type `yes` to confirm. Each Claude session has its own proxy container. If more than one proxy container runs, the command stops and changes nothing.
+Type `yes` to confirm. Claude reconnects on its next attempt. Each Claude session, and each Codex session in audit mode, has its own proxy container. If more than one proxy container runs, `./bump-proxy-limit.sh` stops and changes nothing.
 
-Claude reconnects on its next attempt. To raise the request limit for later sessions, change `PROXY_MAX_REQUESTS_INTERACTIVE` (conversation sessions) or `PROXY_MAX_REQUESTS_AUTONOMOUS` (one-task runs) in `config.env`.
+To raise the request limit for later sessions, change `PROXY_MAX_REQUESTS_INTERACTIVE` (conversation sessions) or `PROXY_MAX_REQUESTS_AUTONOMOUS` (one-task runs) in `config.env`.
 
 ## Updates
 
@@ -484,7 +488,7 @@ Table 4. Common messages, their causes, and fixes. The message column shows the 
 | `refusing to run on the agents package directory` | The project is inside the setup folder | Move the project out of the setup folder |
 | `port is already allocated` | Another session already publishes that port | Use a different `-p` number, or stop the other session |
 | `The original changed after this copy was made` | Your folder changed after `./go` made the review copy | `accept --force` overwrites those changes. Copy the changed files that you want to keep to another folder. Then run `./review <copy> accept --force` |
-| `the copy contains nested git repositories` | The review copy contains another git repository, such as a git submodule | Inspect that repository yourself. Then run `./review <copy> accept --force` |
+| `the copy contains nested git repositories` | The review copy contains a git repository in a subfolder, such as a git submodule | Inspect that repository yourself. `accept --force` also overwrites any later changes to your folder. Then run `./review <copy> accept --force` |
 | `an agent session is still running on this copy` | A session still runs on the review copy | End the session. Then run `./review <copy> accept` |
 
 **Cleanup:**
@@ -523,7 +527,7 @@ Table 5. Commands for common tasks. Run each command from the setup folder. `<pr
 | Reset or raise the request limit | `./bump-proxy-limit.sh 50000` |
 | Update Claude Code and Codex | `./update.sh <codex-version> <claude-version>` |
 
-## Files in the setup folder
+## Setup folder files
 
 Table 6. Files in the setup folder and their purposes. For example, `go` is the script that starts a session.
 
