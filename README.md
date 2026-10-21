@@ -4,7 +4,7 @@ Materials for the workshop "Getting Started with Claude Code" (Brown University,
 
 - `CLAUDE_template.md`: a general rules file to copy and adapt.
 - `beamer_template/`: Alyssa's beamer slide template, shown with her deck "Using LLMs in research" (September 2026). Compile `llms_2026_research_slides.tex` with XeLaTeX. On Overleaf, set the compiler to XeLaTeX. The theme uses the Libertinus fonts. The script `code/llm_expectation_curve.R` draws the figures.
-- Docker: [setup resources to be added].
+- `agents_30.zip`: a Docker setup that runs Claude Code or Codex in a container, for research in Python, R, Stata, and TeX. See "Docker" below.
 
 ## What CLAUDE.md does
 
@@ -57,7 +57,13 @@ Source: Anthropic, "Best practices for Claude Code," and Alyssa Bilinski.
 
 ## Docker
 
-[Docker setup resources to be added.]
+`agents_30.zip` holds a Docker setup for Claude Code and Codex. To use it:
+
+1. Install Docker Desktop: https://www.docker.com/products/docker-desktop/
+2. Unzip the file.
+3. Follow the one-time setup in `agents/README.md`.
+
+`agents/SECURITY.md` describes what the container protects against and the risks that remain.
 
 ## Sources
 
